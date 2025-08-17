@@ -56,7 +56,7 @@ flowchart LR
     B1[OpenBanking · Tink/GoCardless o Revolut Business]
     B2[Survey y Profile]
     B3[Plan Engine · Reglas y Scoring]
-    B4[LLM Adapter · Responses API (GPT)]
+    B4["LLM Adapter · Responses API (GPT)"]
     B5[Sync Service · Cron/Webhooks]
     B6[Events · SSE/WebSocket]
   end
