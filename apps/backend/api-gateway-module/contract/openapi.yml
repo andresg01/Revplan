@@ -1,0 +1,728 @@
+openapi: '3.0.3'
+info:
+  title: Revplan Public API
+  description: >
+    API pública (gateway) de Revplan. Onboarding, consentimiento Open Banking/Revoult,
+    cuentas/transactions, generación y consulta del plan financiero, y eventos en tiempo real (SSE).
+  contact:
+    name: Andrés (Revplan)
+    email: andresgb01@icloud.com
+  version: '0.0.1'
+
+servers:
+  - url: '{protocol}://{host}:{port}/{basePath}/{majorVersion}'
+    variables:
+      protocol:
+        description: Protocol.
+        enum: [http, https]
+        default: https
+      host:
+        description: Host.
+        enum: [api.revplan.local, localhost]
+        default: localhost
+      port:
+        description: Port.
+        default: '8080'
+      basePath:
+        description: BasePath.
+        default: revplan-api
+      majorVersion:
+        description: MajorVersion.
+        default: v0
+
+tags:
+  - name: Onboarding
+    description: Preguntas rápidas y perfil preliminar del usuario.
+  - name: OpenBanking
+    description: Conexión con proveedor (Tink/GoCardless o Revolut Business) y callback.
+  - name: Accounts
+    description: Cuentas habilitadas, balances y transacciones.
+  - name: Plan
+    description: Plantillas, generación/ajustes y KPIs del plan financiero.
+  - name: Events
+    description: Eventos de actualización en tiempo real (SSE).
+
+paths:
+
+  /onboarding/questions:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    get:
+      tags: [Onboarding]
+      summary: Obtiene el cuestionario dinámico de onboarding.
+      operationId: getOnboardingQuestions
+      responses:
+        '200':
+          description: Listado de preguntas.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIdHeader'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingQuestionsResponse'
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /onboarding/answers:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    post:
+      tags: [Onboarding]
+      summary: Guarda respuestas y devuelve el perfil preliminar.
+      operationId: submitOnboardingAnswers
+      requestBody:
+        $ref: '#/components/requestBodies/OnboardingAnswersRequestBody'
+      responses:
+        '200':
+          description: Perfil preliminar calculado.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingProfileResponse' }
+        '400': { $ref: '#/components/responses/400' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /openbanking/connect:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    post:
+      tags: [OpenBanking]
+      summary: Inicia una sesión de consentimiento y devuelve la URL de conexión del banco.
+      operationId: createOpenBankingConsent
+      requestBody:
+        $ref: '#/components/requestBodies/OpenBankingConnectRequestBody'
+      responses:
+        '200':
+          description: Sesión creada; redirigir a `redirectUrl`.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenBankingConnectResponse' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /openbanking/callback:
+    get:
+      tags: [OpenBanking]
+      summary: Callback OAuth/Open Banking (redirección tras autorizar).
+      description: >
+        Endpoint de redirección del proveedor. Intercambia el código por tokens,
+        registra el consentimiento y redirige a la app/web del cliente.
+      operationId: openBankingCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        '302':
+          description: Redirige al frontend/app.
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+        '400': { $ref: '#/components/responses/400' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /accounts:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    get:
+      tags: [Accounts]
+      summary: Lista las cuentas habilitadas con balances.
+      operationId: getAccounts
+      responses:
+        '200':
+          description: OK.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsResponse'
+        '401': { $ref: '#/components/responses/401' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /transactions:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Account-Id'
+      - $ref: '#/components/parameters/Date-From'
+      - $ref: '#/components/parameters/Date-To'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [Accounts]
+      summary: Transacciones de una cuenta.
+      operationId: getTransactions
+      responses:
+        '200':
+          description: OK.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransactionsPage' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /plan/templates:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    get:
+      tags: [Plan]
+      summary: Catálogo de plantillas de plan y parámetros.
+      operationId: getPlanTemplates
+      responses:
+        '200':
+          description: OK.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanTemplatesResponse' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /plan/generate:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    post:
+      tags: [Plan]
+      summary: Genera (o regenera) un plan usando reglas + GPT.
+      operationId: generatePlan
+      requestBody:
+        $ref: '#/components/requestBodies/PlanGenerateRequestBody'
+      responses:
+        '200':
+          description: Plan generado/actualizado.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanResponse' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /plan:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    get:
+      tags: [Plan]
+      summary: Obtiene el plan activo y sus KPIs.
+      operationId: getPlan
+      responses:
+        '200':
+          description: OK.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanResponse' }
+        '401': { $ref: '#/components/responses/401' }
+        '404': { $ref: '#/components/responses/404' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+    put:
+      tags: [Plan]
+      summary: Ajusta manualmente parámetros del plan.
+      operationId: updatePlan
+      requestBody:
+        $ref: '#/components/requestBodies/PlanUpdateRequestBody'
+      responses:
+        '204': { $ref: '#/components/responses/204' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /plan/recompute:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    post:
+      tags: [Plan]
+      summary: Fuerza un recálculo de KPIs/plan.
+      operationId: recomputePlan
+      requestBody:
+        $ref: '#/components/requestBodies/PlanRecomputeRequestBody'
+      responses:
+        '202':
+          description: Recalculo aceptado.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: accepted }
+                  planRecomputeId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /events/stream:
+    get:
+      tags: [Events]
+      summary: Stream de eventos (SSE) para actualizaciones en tiempo real.
+      operationId: eventsStream
+      responses:
+        '200':
+          description: Event stream abierto.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: plan_updated
+                  data: {"planVersion":"2025-08-18T09:12:00Z"}
+        '401': { $ref: '#/components/responses/401' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    XRequestIdHeader:
+      description: Header used to define the identifier of a specific request.
+      schema:
+        type: string
+        format: uuid
+        example: 54b9c11c-9162-45a1-a352-0d95734cd079
+    Location:
+      required: true
+      description: Gives an URL to be redirected.
+      schema:
+        type: string
+        minLength: 4
+        maxLength: 500
+        example: revplan://ob/callback?result=ok
+
+  parameters:
+    Accept-Language-Header:
+      name: Accept-Language
+      in: header
+      example: es-ES
+      description: ISO code of the language expected by the client.
+      required: false
+      schema:
+        type: string
+        default: es-ES
+        pattern: '^[a-z]{2}(-[A-Z]{2})?$'
+
+    X-Request-Id-Header:
+      name: X-Request-ID
+      in: header
+      description: Unique identifier to trace an HTTP request end-to-end (uuid v4).
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: a0eeb5a3-14cf-4f71-b8b3-5a77b54a1f1e
+
+    Offset:
+      name: offset
+      in: query
+      description: The offset for pagination.
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+    Limit:
+      name: limit
+      in: query
+      description: Number of records per page.
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    Account-Id:
+      name: accountId
+      in: query
+      description: Account identifier (provider-specific).
+      required: true
+      schema:
+        type: string
+        example: acc_123456
+
+    Date-From:
+      name: dateFrom
+      in: query
+      description: Start date (inclusive) for transactions.
+      required: false
+      schema:
+        type: string
+        format: date-time
+        example: '2025-07-01T00:00:00Z'
+    Date-To:
+      name: dateTo
+      in: query
+      description: End date (exclusive) for transactions.
+      required: false
+      schema:
+        type: string
+        format: date-time
+        example: '2025-08-01T00:00:00Z'
+
+  schemas:
+
+    Error:
+      title: Error
+      type: object
+      properties:
+        messages:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                pattern: '^[A-Z0-9_]+$'
+                example: UNEXPECTED_ERROR
+              message:
+                type: string
+                example: Unexpected error
+              type:
+                type: string
+                enum: [CRITICAL, FATAL, ERROR, WARNING, INFO]
+              description:
+                type: string
+                example: The server cannot process the request.
+            required: [code, message, type, description]
+      required: [messages]
+
+    Pagination:
+      type: object
+      properties:
+        offset: { type: integer, minimum: 0, default: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        totalElements: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+        pageNumber: { type: integer, minimum: 0 }
+
+    Currency:
+      type: string
+      description: ISO 4217 currency code.
+      enum: [EUR, USD, GBP, CHF, JPY]
+      example: EUR
+
+    Account:
+      type: object
+      properties:
+        id: { type: string, example: 'acc_123456' }
+        name: { type: string, example: 'Revolut Main' }
+        ibanMasked: { type: string, example: 'LT** **** **** 1234' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        balanceAvailable: { type: number, format: double, example: 1520.55 }
+        balanceCurrent: { type: number, format: double, example: 1588.10 }
+        institution: { type: string, example: 'REVOLUT' }
+      required: [id, currency, balanceAvailable, balanceCurrent]
+
+    AccountsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Account' }
+      required: [data]
+
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, example: 'tx_98765' }
+        bookingDate: { type: string, format: date-time }
+        amount: { type: number, format: double, example: -12.35 }
+        currency: { $ref: '#/components/schemas/Currency' }
+        description: { type: string, example: 'Supermercado' }
+        category: { type: string, example: 'groceries' }
+        merchant: { type: string, example: 'Mercadona' }
+      required: [id, bookingDate, amount, currency, description]
+
+    TransactionsPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Transaction' }
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required: [data]
+
+    OnboardingQuestion:
+      type: object
+      properties:
+        id: { type: string, example: 'q_income' }
+        text: { type: string, example: 'Ingresos netos mensuales' }
+        type:
+          type: string
+          enum: [number, currency, boolean, select, scale, text]
+        required: { type: boolean, default: true }
+        options:
+          type: array
+          items: { type: string }
+      required: [id, text, type]
+
+    OnboardingQuestionsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/OnboardingQuestion' }
+      required: [data]
+
+    OnboardingAnswer:
+      type: object
+      properties:
+        questionId: { type: string }
+        value: {}
+      required: [questionId, value]
+
+    OnboardingAnswersRequest:
+      type: object
+      properties:
+        answers:
+          type: array
+          items: { $ref: '#/components/schemas/OnboardingAnswer' }
+      required: [answers]
+
+    OnboardingProfile:
+      type: object
+      properties:
+        stabilityIndex: { type: number, minimum: 0, maximum: 1, example: 0.7 }
+        liquidityNeed: { type: number, minimum: 0, maximum: 1, example: 0.4 }
+        riskScore: { type: integer, minimum: 1, maximum: 5, example: 3 }
+        debtSeverity: { type: number, minimum: 0, maximum: 1, example: 0.2 }
+        incomeNet: { type: number, format: double, example: 2500.00 }
+        expensesFixed: { type: number, format: double, example: 1200.00 }
+        expensesVariable: { type: number, format: double, example: 600.00 }
+        goals:
+          type: array
+          items:
+            type: string
+            enum: [emergency, housing, travel, investment, debt_reduction]
+        dependents: { type: integer, minimum: 0, example: 0 }
+        horizon: { type: string, enum: [short, medium, long], example: medium }
+      required: [stabilityIndex, liquidityNeed, riskScore]
+
+    OnboardingProfileResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/OnboardingProfile' }
+      required: [data]
+
+    OpenBankingConnectRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [tink, gocardless, revolut_business]
+          example: tink
+        redirectUri:
+          type: string
+          description: Deep link / URL de retorno a la app.
+          example: 'revplan://ob/callback'
+        institutionId:
+          type: string
+          description: Identificador de la institución (si aplica en el agregador).
+          example: 'REVOLUT_REVOLT21'
+      required: [provider, redirectUri]
+
+    OpenBankingConnectResponse:
+      type: object
+      properties:
+        redirectUrl:
+          type: string
+          example: 'https://link.tink.com/1.0/consent?...'
+        consentId:
+          type: string
+          example: 'cons_12345'
+      required: [redirectUrl]
+
+    PlanTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          example: EQUILIBRADO_50_30_20
+        name:
+          type: string
+          example: Equilibrado 50/30/20
+        description:
+          type: string
+          example: Adaptación 50/30/20 a tus datos reales y deudas.
+        defaults:
+          type: object
+          properties:
+            savingPct: { type: number, example: 0.25 }
+            emergencyMonths: { type: integer, example: 6 }
+      required: [id, name]
+
+    PlanTemplatesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PlanTemplate' }
+      required: [data]
+
+    PlanAdjustments:
+      type: object
+      properties:
+        saving_pct: { type: number, minimum: 0, maximum: 1, example: 0.27 }
+        emergency_months: { type: integer, minimum: 0, maximum: 24, example: 7 }
+        envelopes:
+          type: object
+          additionalProperties: { type: number }
+          example: { variables: 0.28, fijos: 0.45, objetivos: 0.27 }
+
+    PlanKPIs:
+      type: object
+      properties:
+        savingRate: { type: number, example: 0.25 }
+        runwayMonths: { type: number, example: 6.5 }
+        budgetCompliance: { type: number, example: 0.9 }
+
+    Plan:
+      type: object
+      properties:
+        planVersion: { type: string, example: '2025-08-18T09:12:00Z' }
+        templateId: { type: string, example: EQUILIBRADO_50_30_20 }
+        adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
+        rationale: { type: string, example: 'Priorizamos colchón y ligera subida de ahorro.' }
+        alerts:
+          type: array
+          items: { type: string }
+        kpis: { $ref: '#/components/schemas/PlanKPIs' }
+
+    PlanResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Plan' }
+      required: [data]
+
+    PlanGenerateRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          description: Estrategia de generación.
+          enum: [rules, rules_plus_gpt]
+          default: rules_plus_gpt
+        forceTemplateId:
+          type: string
+          description: Forzar plantilla (debug/testing).
+      required: [mode]
+
+    PlanUpdateRequest:
+      type: object
+      properties:
+        adjustments:
+          $ref: '#/components/schemas/PlanAdjustments'
+      required: [adjustments]
+
+    PlanRecomputeRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          example: balance_change
+        thresholdPct:
+          type: number
+          example: 0.05
+
+  requestBodies:
+    OnboardingAnswersRequestBody:
+      description: Respuestas del cuestionario de onboarding.
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OnboardingAnswersRequest' }
+
+    OpenBankingConnectRequestBody:
+      description: Parámetros para crear sesión de consentimiento.
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OpenBankingConnectRequest' }
+
+    PlanGenerateRequestBody:
+      description: Solicitud de generación/regeneración del plan.
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PlanGenerateRequest' }
+
+    PlanUpdateRequestBody:
+      description: Ajustes manuales del plan.
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PlanUpdateRequest' }
+
+    PlanRecomputeRequestBody:
+      description: Forzar recálculo del plan/KPIs.
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PlanRecomputeRequest' }
+
+  responses:
+    '204':
+      description: No Content.
+    '400':
+      description: Bad Request.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    '401':
+      description: Unauthorized.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    '403':
+      description: Forbidden.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    '404':
+      description: Not Found.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    '409':
+      description: Conflict.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    '422':
+      description: Unprocessable Entity.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    '500':
+      description: Internal Server Error.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+security:
+  - bearerAuth: []

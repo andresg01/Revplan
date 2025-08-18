@@ -1,0 +1,900 @@
+openapi: '3.0.3'
+info:
+  title: Revplan OpenBanking Service API
+  description: >
+    Microservicio interno para gestionar proveedores Open Banking (Tink/GoCardless/Revolut Business),
+    consentimiento, listado de instituciones, cuentas, balances, transacciones y recepción de webhooks.
+  contact:
+    name: Revplan Team
+    email: andresgb01@icloud.com
+  version: '0.0.1'
+
+servers:
+  - url: '{protocol}://{host}:{port}/{basePath}/{majorVersion}'
+    variables:
+      protocol:
+        description: Protocol.
+        enum: ['http','https']
+        default: 'http'
+      host:
+        description: Host.
+        enum: ['localhost','openbanking.revplan.local']
+        default: 'localhost'
+      port:
+        description: Port.
+        default: '8081'
+      basePath:
+        description: BasePath.
+        default: openbanking-service
+      majorVersion:
+        description: MajorVersion.
+        default: v0
+
+tags:
+  - name: Institutions
+    description: Gestión y consulta de instituciones soportadas por el proveedor.
+  - name: Consents
+    description: Creación, estado y revocación de consentimientos.
+  - name: Accounts
+    description: Cuentas y balances asociados a un consentimiento.
+  - name: Transactions
+    description: Transacciones de una cuenta.
+  - name: Webhooks
+    description: Recepción de notificaciones del proveedor (eventos).
+
+paths:
+
+  /institutions:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Provider'
+      - $ref: '#/components/parameters/Country'
+      - $ref: '#/components/parameters/Search'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [Institutions]
+      summary: Lista instituciones soportadas por el proveedor.
+      operationId: getInstitutions
+      responses:
+        '200':
+          $ref: '#/components/responses/GetInstitutionsResponse'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
+        default: { $ref: '#/components/responses/500' }
+
+  /consents:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    post:
+      tags: [Consents]
+      summary: Crea una sesión de consentimiento en el proveedor.
+      description: Devuelve la URL de redirección para que el usuario autorice el acceso.
+      operationId: createConsent
+      requestBody:
+        $ref: '#/components/requestBodies/CreateConsentRequestBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreateConsent201'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
+        default: { $ref: '#/components/responses/500' }
+
+  /consents/{consentId}:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Consent-Id'
+    get:
+      tags: [Consents]
+      summary: Consulta detalle y estado del consentimiento.
+      operationId: getConsentById
+      responses:
+        '200':
+          $ref: '#/components/responses/GetConsentResponse'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '404': { $ref: '#/components/responses/404' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+    delete:
+      tags: [Consents]
+      summary: Revoca el consentimiento en el proveedor y en Revplan.
+      operationId: revokeConsent
+      responses:
+        '204':
+          $ref: '#/components/responses/204'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '404': { $ref: '#/components/responses/404' }
+        '409': { $ref: '#/components/responses/409' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /consents/{consentId}/accounts:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Consent-Id'
+    get:
+      tags: [Accounts]
+      summary: Lista cuentas disponibles bajo un consentimiento.
+      operationId: getAccountsByConsent
+      responses:
+        '200':
+          $ref: '#/components/responses/GetAccountsResponse'
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '404': { $ref: '#/components/responses/404' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /consents/{consentId}/accounts/{accountId}:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Consent-Id'
+      - $ref: '#/components/parameters/Account-Id-Path'
+    get:
+      tags: [Accounts]
+      summary: Detalle de cuenta (metadatos).
+      operationId: getAccountDetail
+      responses:
+        '200':
+          $ref: '#/components/responses/GetAccountDetailResponse'
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '404': { $ref: '#/components/responses/404' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /consents/{consentId}/accounts/{accountId}/balances:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Consent-Id'
+      - $ref: '#/components/parameters/Account-Id-Path'
+    get:
+      tags: [Accounts]
+      summary: Balances (current/available) de la cuenta.
+      operationId: getAccountBalances
+      responses:
+        '200':
+          $ref: '#/components/responses/GetBalancesResponse'
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '404': { $ref: '#/components/responses/404' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+  /consents/{consentId}/accounts/{accountId}/transactions:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Consent-Id'
+      - $ref: '#/components/parameters/Account-Id-Path'
+      - $ref: '#/components/parameters/Date-From'
+      - $ref: '#/components/parameters/Date-To'
+      - $ref: '#/components/parameters/Include-Pending'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [Transactions]
+      summary: Transacciones de una cuenta (paginadas y filtradas por fechas).
+      operationId: getTransactionsByAccount
+      responses:
+        '200':
+          $ref: '#/components/responses/GetTransactionsPage'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '404': { $ref: '#/components/responses/404' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
+        default: { $ref: '#/components/responses/500' }
+
+  /webhooks/{provider}:
+    post:
+      tags: [Webhooks]
+      summary: Endpoint para recibir eventos del proveedor (institutions/consents/accounts/transactions).
+      description: >
+        Firma opcional mediante cabecera X-Provider-Signature. Devuelve 202 si el evento se acepta para
+        procesamiento asíncrono.
+      operationId: receiveProviderWebhook
+      parameters:
+        - $ref: '#/components/parameters/Provider-Path'
+        - $ref: '#/components/parameters/X-Request-Id-Header-Optional'
+        - $ref: '#/components/parameters/X-Provider-Signature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Payload específico del proveedor.
+      responses:
+        '202':
+          description: Accepted.
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    XRequestIdHeader:
+      description: Header used to define the identifier of an specific request.
+      schema:
+        type: string
+        format: uuid
+        example: 54b9c11c-9162-45a1-a352-0d95734cd079
+    Location:
+      required: true
+      description: Gives an URL to be redirected (resource location).
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 500
+        example: /openbanking-service/v0/consents/30000000-4000-4000-5000-600000000000
+    XProviderSignature:
+      description: Firma del webhook del proveedor (HMAC/PKI según proveedor).
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 4096
+        example: t=1723900000,v1=4a1f...
+
+  parameters:
+    Accept-Language-Header:
+      name: Accept-Language
+      in: header
+      example: es-ES
+      description: ISO code of the language that the client accepts in response from the server.
+      required: false
+      schema:
+        type: string
+        default: es-ES
+        pattern: ^[a-z]{2}(-[A-Z]{2})?$
+    X-Request-Id-Header:
+      name: X-Request-ID
+      in: header
+      description: Unique identifier (uuid v4) for tracing an HTTP request.
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: a0eeb5a3-14cf-4f71-b8b3-5a77b54a1f1e
+    X-Request-Id-Header-Optional:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+    X-Provider-Signature:
+      name: X-Provider-Signature
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 4096
+
+    Provider:
+      name: provider
+      in: query
+      description: Proveedor a consultar.
+      required: true
+      schema:
+        type: string
+        enum: [tink, gocardless, revolut_business]
+        example: tink
+    Provider-Path:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [tink, gocardless, revolut_business]
+
+    Country:
+      name: country
+      in: query
+      description: País (ISO 3166-1 alpha-2) para filtrar instituciones.
+      required: false
+      schema:
+        type: string
+        pattern: '^[A-Z]{2}$'
+        example: ES
+
+    Search:
+      name: search
+      in: query
+      description: Texto de búsqueda por nombre o BIC.
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        example: Revolut
+
+    Offset:
+      name: offset
+      in: query
+      description: The offset for pagination.
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        maximum: 100
+        minimum: 1
+        default: 20
+      description: Number of records returned per page.
+
+    Consent-Id:
+      name: consentId
+      in: path
+      description: Consent identifier (uuid).
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: 54b9c11c-9162-45a1-a352-0d95734cd079
+
+    Account-Id-Path:
+      name: accountId
+      in: path
+      description: Account identifier (provider-specific).
+      required: true
+      schema:
+        type: string
+        minLength: 2
+        maxLength: 128
+        example: acc_123456
+
+    Date-From:
+      name: dateFrom
+      in: query
+      description: Fecha/hora inicio (inclusiva) en ISO-8601 (UTC).
+      required: false
+      schema:
+        type: string
+        format: date-time
+        example: '2025-07-01T00:00:00Z'
+
+    Date-To:
+      name: dateTo
+      in: query
+      description: Fecha/hora fin (exclusiva) en ISO-8601 (UTC).
+      required: false
+      schema:
+        type: string
+        format: date-time
+        example: '2025-08-01T00:00:00Z'
+
+    Include-Pending:
+      name: includePending
+      in: query
+      description: Incluir transacciones pendientes si el proveedor lo soporta.
+      required: false
+      schema:
+        type: boolean
+        default: false
+
+  schemas:
+
+    Error:
+      title: Error
+      type: object
+      description: General structure to represent errors.
+      properties:
+        messages:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                pattern: '^[A-Z0-9_]+$'
+                example: UNEXPECTED_ERROR
+              message:
+                type: string
+                example: Unexpected error
+              type:
+                type: string
+                enum: [CRITICAL, FATAL, ERROR, WARNING, INFO]
+              description:
+                type: string
+                example: The server cannot process the request.
+            required: [code, message, type, description]
+      required: [messages]
+
+    HyperLink:
+      type: object
+      properties:
+        href:
+          type: string
+          maxLength: 10000
+          pattern: ^[a-zA-Z0-9_\-\.:/\?&=%]*$
+          minLength: 1
+          example: http://localhost:8081/openbanking-service/v0/institutions?limit=10&offset=0
+
+    PaginationLinks:
+      type: object
+      properties:
+        first: { $ref: '#/components/schemas/HyperLink' }
+        prev:  { $ref: '#/components/schemas/HyperLink' }
+        self:  { $ref: '#/components/schemas/HyperLink' }
+        next:  { $ref: '#/components/schemas/HyperLink' }
+        last:  { $ref: '#/components/schemas/HyperLink' }
+
+    Pagination:
+      type: object
+      properties:
+        offset: { type: integer, minimum: 0, default: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        pageNumber: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+        totalElements: { type: integer, minimum: 0 }
+        links: { $ref: '#/components/schemas/PaginationLinks' }
+
+    Currency:
+      type: string
+      description: ISO 4217 currency code.
+      enum: [EUR, USD, GBP, CHF, JPY]
+      example: EUR
+
+    Money:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: double
+          multipleOf: 0.01
+          example: 1234.56
+        currency: { $ref: '#/components/schemas/Currency' }
+      required: [amount, currency]
+
+    Institution:
+      type: object
+      properties:
+        id: { type: string, example: 'REVOLUT_REVOLT21' }
+        name: { type: string, example: 'Revolut' }
+        bic: { type: string, example: 'REVOLT21' }
+        country: { type: string, pattern: '^[A-Z]{2}$', example: 'LT' }
+        logoUrl: { type: string, nullable: true }
+      required: [id, name, country]
+
+    InstitutionsListData:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Institution' }
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required: [data]
+
+    ConsentCreateRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [tink, gocardless, revolut_business]
+        redirectUri:
+          type: string
+          minLength: 4
+          maxLength: 500
+          example: 'revplan://ob/callback'
+        institutionId:
+          type: string
+          description: Identificador de la institución del agregador (si aplica).
+          minLength: 2
+          maxLength: 64
+          example: 'REVOLUT_REVOLT21'
+        scope:
+          type: array
+          description: Alcances solicitados al proveedor.
+          items:
+            type: string
+            enum: [accounts, balances, transactions]
+          minItems: 1
+          uniqueItems: true
+        state:
+          type: string
+          description: Token opaco de correlación (round-trip).
+          minLength: 8
+          maxLength: 256
+      required: [provider, redirectUri, scope]
+
+    ConsentStatus:
+      type: string
+      enum: [created, pending_user, active, expired, revoked, error]
+      example: pending_user
+
+    Consent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string, enum: [tink, gocardless, revolut_business] }
+        institutionId: { type: string, nullable: true, example: 'REVOLUT_REVOLT21' }
+        status: { $ref: '#/components/schemas/ConsentStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        redirectUrl: { type: string, nullable: true }
+      required: [id, provider, status, createdAt, updatedAt]
+
+    ConsentDetailData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Consent' }
+      required: [data]
+
+    Account:
+      type: object
+      properties:
+        id: { type: string, example: 'acc_123456' }
+        name: { type: string, example: 'Revolut Main' }
+        ibanMasked: { type: string, example: 'LT** **** **** 1234' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        type: { type: string, example: 'CURRENT' }
+        institution: { type: string, example: 'REVOLUT' }
+      required: [id, currency]
+
+    AccountsListData:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Account' }
+      required: [data]
+
+    Balance:
+      type: object
+      properties:
+        current: { $ref: '#/components/schemas/Money' }
+        available: { $ref: '#/components/schemas/Money' }
+        updatedAt: { type: string, format: date-time }
+      required: [current, available, updatedAt]
+
+    BalancesData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Balance' }
+      required: [data]
+
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, example: 'tx_98765' }
+        bookingDate: { type: string, format: date-time }
+        valueDate: { type: string, format: date-time, nullable: true }
+        amount:
+          type: number
+          format: double
+          multipleOf: 0.01
+          example: -12.35
+        currency: { $ref: '#/components/schemas/Currency' }
+        description: { type: string, example: 'Supermercado' }
+        category: { type: string, example: 'groceries' }
+        merchant: { type: string, nullable: true, example: 'Mercadona' }
+        status:
+          type: string
+          enum: [booked, pending]
+          example: booked
+      required: [id, bookingDate, amount, currency, description, status]
+
+    TransactionsPageData:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Transaction' }
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required: [data]
+
+  requestBodies:
+    CreateConsentRequestBody:
+      description: Parámetros para crear una sesión de consentimiento.
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConsentCreateRequest'
+
+  responses:
+
+    GetInstitutionsResponse:
+      description: OK.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIdHeader'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InstitutionsListData'
+
+    CreateConsent201:
+      description: Created.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIdHeader'
+        Location:
+          $ref: '#/components/headers/Location'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConsentDetailData'
+
+    GetConsentResponse:
+      description: OK.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIdHeader'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConsentDetailData'
+
+    GetAccountsResponse:
+      description: OK.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIdHeader'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AccountsListData'
+
+    GetAccountDetailResponse:
+      description: OK.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIdHeader'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Account'
+
+    GetBalancesResponse:
+      description: OK.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIdHeader'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BalancesData'
+
+    GetTransactionsPage:
+      description: OK.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIdHeader'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TransactionsPageData'
+
+    '204':
+      description: No contents
+
+    '400':
+      description: Bad Request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            invalid-params:
+              $ref: '#/components/examples/example-error400InvalidParameters'
+
+    '401':
+      description: Unauthorized.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            unauthorized:
+              $ref: '#/components/examples/example-error401'
+
+    '403':
+      description: Forbidden.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            forbidden:
+              $ref: '#/components/examples/example-error403'
+
+    '404':
+      description: Not Found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            not-found:
+              $ref: '#/components/examples/example-error404'
+
+    '409':
+      description: Conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            conflict:
+              $ref: '#/components/examples/example-error409'
+
+    '422':
+      description: Unprocessable Entity.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            unprocessable:
+              $ref: '#/components/examples/example-error422'
+
+    '429':
+      description: Too Many Requests.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            rate-limit:
+              value:
+                messages:
+                  - code: RATE_LIMIT
+                    message: Too many requests
+                    type: ERROR
+                    description: Backoff and retry later.
+
+    '500':
+      description: Internal Server Error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            err500Example:
+              $ref: '#/components/examples/example-error500'
+
+    '502':
+      description: Bad Gateway.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            bad-gateway:
+              value:
+                messages:
+                  - code: BAD_GATEWAY
+                    message: Upstream error
+                    type: ERROR
+                    description: Provider returned an invalid response.
+
+    '503':
+      description: Service Unavailable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            service-unavailable:
+              value:
+                messages:
+                  - code: SERVICE_UNAVAILABLE
+                    message: Provider service unavailable
+                    type: ERROR
+                    description: Upstream unavailable or maintenance.
+
+    '504':
+      description: Gateway Timeout.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            timeout:
+              value:
+                messages:
+                  - code: GATEWAY_TIMEOUT
+                    message: Upstream timeout
+                    type: ERROR
+                    description: Timeout waiting for provider response.
+
+  examples:
+    example-error400InvalidParameters:
+      value:
+        messages:
+          - code: BAD_REQUEST
+            message: Invalid Parameter
+            type: ERROR
+            description: A parameter has not been provided correctly.
+    example-error401:
+      value:
+        messages:
+          - code: UNAUTHORIZED
+            message: Unauthorized
+            type: ERROR
+            description: Failure to present credentials correctly.
+    example-error403:
+      value:
+        messages:
+          - code: FORBIDDEN
+            message: Forbidden
+            type: FATAL
+            description: You do not have permissions to operate with this invocation.
+    example-error404:
+      value:
+        messages:
+          - code: NOT_FOUND
+            type: FATAL
+            message: Resource Not Found
+            description: Resource not found.
+    example-error409:
+      value:
+        messages:
+          - code: CONFLICT
+            message: Conflict
+            type: ERROR
+            description: Resource state conflict.
+    example-error422:
+      value:
+        messages:
+          - code: UNPROCESSABLE_ENTITY
+            message: Unprocessable Content
+            type: ERROR
+            description: Entity unprocessable by the server.
+    example-error500:
+      value:
+        messages:
+          - code: INTERNAL_SERVER_ERROR
+            message: Internal server error
+            type: FATAL
+            description: Unexpected error from the server, it has no way to respond to the invocation.
+
+security:
+  - bearerAuth: []
