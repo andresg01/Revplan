@@ -25,7 +25,7 @@ servers:
         default: '8082'
       basePath:
         description: BasePath.
-        default: plan-engine-service
+        default: plan-engine
       majorVersion:
         description: MajorVersion.
         default: v0

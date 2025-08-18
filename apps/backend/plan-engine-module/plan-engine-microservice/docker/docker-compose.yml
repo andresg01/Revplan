@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  plan-engine-ms:
+    container_name: plan-engine-ms
+    image: plan-engine-ms:latest
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/revplan
+      - SPRING_DATASOURCE_USERNAME=revplan
+      - SPRING_DATASOURCE_PASSWORD=revplan
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver
+      - SPRING_SQL_INIT_PLATFORM=postgres
+      - SPRING_SQL_INIT_SCHEMA_LOCATIONS=classpath:db/schema-postgres.sql
+      - SPRING_SQL_INIT_DATA_LOCATIONS=classpath:db/data-postgres.sql
+      - SPRING_SQL_INIT_MODE=always
+      - SPRING_SQL_INIT_CONTINUE_ON_ERROR=true
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA=plan_engine
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - plan-engine-network
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=revplan
+      - POSTGRES_USER=revplan
+      - POSTGRES_PASSWORD=revplan
+    ports:
+      - "5433:5432"
+    volumes:
+      - plan-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U revplan -d revplan || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - plan-engine-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@local
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
+    ports:
+      - "8081:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - plan-pgadmin-data:/var/lib/pgadmin
+    networks:
+      - plan-engine-network
+
+networks:
+  plan-engine-network:
+    driver: bridge
+
+volumes:
+  plan-pg-data:
+  plan-pgadmin-data:
