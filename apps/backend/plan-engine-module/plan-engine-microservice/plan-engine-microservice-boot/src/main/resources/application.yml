@@ -1,0 +1,56 @@
+server:
+  port: 8080
+
+# Logging
+logging:
+  config: classpath:config/log4j2/log4j2-local.xml
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+spring:
+  profiles:
+    active: local
+
+  # POSTGRES (el compose expone el servicio como 'postgres')
+  datasource:
+    url: jdbc:postgresql://localhost:5433/revplan
+    username: revplan
+    password: revplan
+    driver-class-name: org.postgresql.Driver
+
+  sql:
+    init:
+      platform: postgres
+      schema-locations: classpath:db/schema-postgres.sql
+      data-locations: classpath:db/data-postgres.sql
+      mode: always
+      continue-on-error: true
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  security:
+    user:
+      name: admin
+      password: test
+
+# Auto springdoc-openapi (estilo hotels)
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  api-rest:
+    base-path: /artifact-app/v1

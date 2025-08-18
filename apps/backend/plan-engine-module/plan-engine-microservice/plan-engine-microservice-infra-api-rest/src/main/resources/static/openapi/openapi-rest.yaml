@@ -1,0 +1,1192 @@
+openapi: '3.0.3'
+info:
+  title: Revplan Plan Engine Service API
+  description: >
+    Microservicio interno de Revplan para gestión del catálogo de plantillas, scoring, generación
+    y versionado de planes financieros, KPIs y simulaciones "what-if".
+  contact:
+    name: Revplan Team
+    email: andresgb01@icloud.com
+  version: '0.0.1'
+
+servers:
+  - url: '{protocol}://{host}:{port}/{basePath}/{majorVersion}'
+    variables:
+      protocol:
+        description: Protocol.
+        enum: ['http', 'https']
+        default: 'http'
+      host:
+        description: Host.
+        enum: ['localhost', 'plan-engine.revplan.local']
+        default: 'localhost'
+      port:
+        description: Port.
+        default: '8082'
+      basePath:
+        description: BasePath.
+        default: plan-engine
+      majorVersion:
+        description: MajorVersion.
+        default: v0
+
+tags:
+  - name: Templates
+    description: Catálogo de plantillas de plan financiero (CRUD interno).
+  - name: Plans
+    description: Generación, consulta, actualización y recomputo de planes y KPIs.
+  - name: Scores
+    description: Cálculo previo de scoring por plantilla.
+  - name: Simulation
+    description: Simulaciones de cambios (what-if) sin persistir.
+
+paths:
+
+  ###########################################################################
+  # TEMPLATES
+  ###########################################################################
+
+  /plan-engine/v0/templates:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Template-Name-Search'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [Templates]
+      summary: Lista plantillas disponibles (con filtros y paginación).
+      operationId: getTemplates
+      responses:
+        '200':
+          description: OK.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TemplateListData' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      - id: EMERGENCIA_RAPIDA
+                        name: Emergencia Rapida
+                        description: Prioriza fondo 6-9 meses con austeridad temporal.
+                        defaults:
+                          savingPct: 0.30
+                          emergencyMonths: 8
+                          envelopes: { fijos: 0.45, variables: 0.25, objetivos: 0.30 }
+                        constraints:
+                          minSavingPct: 0.10
+                          maxSavingPct: 0.60
+                          minEmergencyMonths: 3
+                          maxEmergencyMonths: 12
+                        applicabilityRules:
+                          minRisk: 1
+                          maxRisk: 3
+                          maxDebtSeverity: 0.8
+                          minLiquidityNeed: 0.3
+                        weights: { risk: 0.2, liquidity: 0.2, debt: 0.25, savingsGap: 0.15, age: 0.1, stability: 0.1 }
+                    pagination: { offset: 0, limit: 20, totalElements: 1, totalPages: 1, pageNumber: 0 }
+        '400': { $ref: '#/components/responses/400' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        default: { $ref: '#/components/responses/500' }
+
+    post:
+      tags: [Templates]
+      summary: Crea una nueva plantilla.
+      operationId: createTemplate
+      requestBody:
+        $ref: '#/components/requestBodies/TemplateRequestBody'
+      responses:
+        '201':
+          description: Created.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TemplateData' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /plan-engine/v0/templates/{templateId}:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Template-Id'
+    get:
+      tags: [Templates]
+      summary: Obtiene detalle de una plantilla por id.
+      operationId: getTemplateById
+      responses:
+        '200':
+          description: OK.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TemplateData' }
+        '404': { $ref: '#/components/responses/404' }
+        '500': { $ref: '#/components/responses/500' }
+    put:
+      tags: [Templates]
+      summary: Actualiza una plantilla por id.
+      operationId: updateTemplate
+      requestBody:
+        $ref: '#/components/requestBodies/TemplateRequestBody'
+      responses:
+        '204': { $ref: '#/components/responses/204' }
+        '400': { $ref: '#/components/responses/400' }
+        '404': { $ref: '#/components/responses/404' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+    delete:
+      tags: [Templates]
+      summary: Elimina una plantilla (si no está en uso).
+      operationId: deleteTemplate
+      responses:
+        '204': { $ref: '#/components/responses/204' }
+        '404': { $ref: '#/components/responses/404' }
+        '409': { $ref: '#/components/responses/409' }
+        '500': { $ref: '#/components/responses/500' }
+
+  ###########################################################################
+  # SCORING PREVIEW
+  ###########################################################################
+
+  /plan-engine/v0/scores/preview:
+    post:
+      tags: [Scores]
+      summary: Calcula el scoring de todas las plantillas para un perfil dado (sin persistir).
+      operationId: previewScores
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+      requestBody:
+        $ref: '#/components/requestBodies/ScorePreviewRequestBody'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScorePreviewData' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      - templateId: EQUILIBRADO_50_30_20
+                        score: 0.82
+                        factors: { risk: 0.18, liquidity: 0.16, debt: 0.22, savingsGap: 0.12, age: 0.08, stability: 0.06 }
+                      - templateId: EMERGENCIA_RAPIDA
+                        score: 0.76
+                        factors: { risk: 0.12, liquidity: 0.20, debt: 0.24, savingsGap: 0.12, age: 0.04, stability: 0.04 }
+        '400': { $ref: '#/components/responses/400' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+
+  ###########################################################################
+  # PLANS
+  ###########################################################################
+
+  /plan-engine/v0/plans:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/User-Id-Query'
+      - $ref: '#/components/parameters/Active-Only'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [Plans]
+      summary: Lista planes por usuario (histórico y/o activo).
+      operationId: getPlans
+      responses:
+        '200':
+          description: OK.
+          headers: { X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanListData' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /plan-engine/v0/plans/generate:
+    post:
+      tags: [Plans]
+      summary: Genera o regenera un plan (reglas + opcional GPT).
+      operationId: generatePlan
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+      requestBody:
+        $ref: '#/components/requestBodies/PlanGenerateRequestBody'
+      responses:
+        '201':
+          description: Plan generado/actualizado.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanData' }
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 6a2f2f40-6c09-4b35-8d46-0e0f8b1c0a11
+                      userId: 11111111-2222-3333-4444-555555555555
+                      planVersion: '2025-08-18T09:12:00Z'
+                      status: active
+                      templateId: EQUILIBRADO_50_30_20
+                      adjustments:
+                        saving_pct: 0.27
+                        emergency_months: 7
+                        envelopes: { fijos: 0.45, variables: 0.28, objetivos: 0.27 }
+                      rationale: 'Priorizamos colchón y ligera subida de ahorro'
+                      alerts: ['Ajusta ocio si superas 10% del limite']
+                      kpis:
+                        savingRate: 0.26
+                        runwayMonths: 6.8
+                        budgetCompliance: 0.91
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
+
+  /plan-engine/v0/plans/{planId}:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Plan-Id'
+    get:
+      tags: [Plans]
+      summary: Obtiene un plan por id.
+      operationId: getPlanById
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanData' }
+        '404': { $ref: '#/components/responses/404' }
+        '500': { $ref: '#/components/responses/500' }
+    put:
+      tags: [Plans]
+      summary: Ajusta manualmente parámetros del plan (no cambia plantilla).
+      operationId: updatePlan
+      requestBody:
+        $ref: '#/components/requestBodies/PlanUpdateRequestBody'
+      responses:
+        '204': { $ref: '#/components/responses/204' }
+        '400': { $ref: '#/components/responses/400' }
+        '404': { $ref: '#/components/responses/404' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /plan-engine/v0/plans/{planId}/recompute:
+    post:
+      tags: [Plans]
+      summary: Fuerza recálculo de KPIs y (opcionalmente) nueva versión.
+      operationId: recomputePlan
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+        - $ref: '#/components/parameters/Plan-Id'
+      requestBody:
+        $ref: '#/components/requestBodies/PlanRecomputeRequestBody'
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: accepted }
+                  recomputeId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/400' }
+        '404': { $ref: '#/components/responses/404' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+
+  ###########################################################################
+  # SIMULATIONS
+  ###########################################################################
+
+  /plan-engine/v0/plans/{planId}/simulate:
+    post:
+      tags: [Simulation]
+      summary: Simula cambios (what-if) sin persistir.
+      operationId: simulatePlan
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+        - $ref: '#/components/parameters/Plan-Id'
+      requestBody:
+        $ref: '#/components/requestBodies/PlanSimulationRequestBody'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanSimulationData' }
+              examples:
+                sample:
+                  value:
+                    data:
+                      base:
+                        savingRate: 0.26
+                        runwayMonths: 6.8
+                        budgetCompliance: 0.91
+                      scenario:
+                        changes:
+                          saving_pct: 0.30
+                          envelopes: { variables: 0.24 }
+                        kpis:
+                          savingRate: 0.28
+                          runwayMonths: 7.4
+                          budgetCompliance: 0.89
+        '400': { $ref: '#/components/responses/400' }
+        '404': { $ref: '#/components/responses/404' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  ###########################################################################
+  # HEADERS
+  ###########################################################################
+
+  headers:
+    XRequestIdHeader:
+      description: Header used to define the identifier of an specific request.
+      schema:
+        type: string
+        format: uuid
+        example: 54b9c11c-9162-45a1-a352-0d95734cd079
+    Location:
+      required: true
+      description: Recurso recién creado.
+      schema:
+        type: string
+        minLength: 4
+        maxLength: 500
+        example: /plan-engine-service/v0/plans/6a2f2f40-6c09-4b35-8d46-0e0f8b1c0a11
+
+  ###########################################################################
+  # PARAMETERS
+  ###########################################################################
+
+  parameters:
+    Accept-Language-Header:
+      name: Accept-Language
+      in: header
+      required: false
+      description: ISO code of the language that the client accepts.
+      schema:
+        type: string
+        default: es-ES
+        pattern: ^[a-z]{2}(-[A-Z]{2})?$
+        example: es-ES
+
+    X-Request-Id-Header:
+      name: X-Request-ID
+      in: header
+      required: true
+      description: Unique identifier for tracing an HTTP request (uuid v4).
+      schema:
+        type: string
+        format: uuid
+        example: a0eeb5a3-14cf-4f71-b8b3-5a77b54a1f1e
+
+    Template-Id:
+      name: templateId
+      in: path
+      required: true
+      description: Identificador de plantilla (MAYUSCULAS y guion bajo).
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 64
+        pattern: '^[A-Z0-9_]+$'
+        example: EQUILIBRADO_50_30_20
+
+    Template-Name-Search:
+      name: name
+      in: query
+      required: false
+      description: Filtro por nombre (contiene, case-insensitive).
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        pattern: "^[a-zA-Z0-9 _\\-\\.]+$"
+        example: Equilibrado
+
+    Plan-Id:
+      name: planId
+      in: path
+      required: true
+      description: Identificador del plan.
+      schema:
+        type: string
+        format: uuid
+        example: 6a2f2f40-6c09-4b35-8d46-0e0f8b1c0a11
+
+    User-Id-Query:
+      name: userId
+      in: query
+      required: true
+      description: Identificador del usuario (uuid).
+      schema:
+        type: string
+        format: uuid
+        example: 11111111-2222-3333-4444-555555555555
+
+    Active-Only:
+      name: activeOnly
+      in: query
+      required: false
+      description: Si true, devuelve solo la versión activa por usuario.
+      schema:
+        type: boolean
+        default: true
+
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: The offset for pagination.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Number of records per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  ###########################################################################
+  # SCHEMAS
+  ###########################################################################
+
+  schemas:
+
+    Error:
+      title: Error
+      type: object
+      description: Estructura de error estándar.
+      properties:
+        messages:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                maxLength: 100
+                pattern: '^[A-Z0-9_]+$'
+                example: UNEXPECTED_ERROR
+              message:
+                type: string
+                maxLength: 10000
+                example: Unexpected error
+              type:
+                type: string
+                enum: [CRITICAL, FATAL, ERROR, WARNING, INFO]
+              description:
+                type: string
+                maxLength: 2000
+                example: The server cannot process the request.
+            required: [code, message, type, description]
+      required: [messages]
+
+    HyperLink:
+      type: object
+      properties:
+        href:
+          type: string
+          maxLength: 10000
+          pattern: ^[a-zA-Z0-9_\-\.:/\?&=%]*$
+          minLength: 1
+          example: http://localhost:8082/plan-engine-service/v0/templates?limit=10&offset=0
+
+    PaginationLinks:
+      type: object
+      properties:
+        first: { $ref: '#/components/schemas/HyperLink' }
+        prev:  { $ref: '#/components/schemas/HyperLink' }
+        self:  { $ref: '#/components/schemas/HyperLink' }
+        next:  { $ref: '#/components/schemas/HyperLink' }
+        last:  { $ref: '#/components/schemas/HyperLink' }
+
+    Pagination:
+      type: object
+      properties:
+        offset: { type: integer, minimum: 0, default: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        pageNumber: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+        totalElements: { type: integer, minimum: 0 }
+        links: { $ref: '#/components/schemas/PaginationLinks' }
+
+    Currency:
+      type: string
+      description: ISO 4217 currency code.
+      enum: [EUR, USD, GBP, CHF, JPY]
+      example: EUR
+
+    Money:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: double
+          multipleOf: 0.01
+          minimum: -1000000000
+          maximum: 1000000000
+          example: 1234.56
+        currency: { $ref: '#/components/schemas/Currency' }
+      required: [amount, currency]
+
+    TemplateConstraints:
+      type: object
+      properties:
+        minSavingPct: { type: number, minimum: 0, maximum: 1, example: 0.10 }
+        maxSavingPct: { type: number, minimum: 0, maximum: 1, example: 0.40 }
+        minEmergencyMonths: { type: integer, minimum: 0, maximum: 24, example: 3 }
+        maxEmergencyMonths: { type: integer, minimum: 0, maximum: 24, example: 12 }
+      description: Límites globales que el motor debe respetar.
+
+    TemplateApplicabilityRules:
+      type: object
+      properties:
+        minRisk: { type: integer, minimum: 1, maximum: 5, example: 2 }
+        maxRisk: { type: integer, minimum: 1, maximum: 5, example: 4 }
+        maxDebtSeverity: { type: number, minimum: 0, maximum: 1, example: 0.7 }
+        minLiquidityNeed: { type: number, minimum: 0, maximum: 1, example: 0.2 }
+        minAge: { type: integer, minimum: 16, maximum: 100, example: 25 }
+        maxAge: { type: integer, minimum: 16, maximum: 100, example: 70 }
+      description: Reglas de aplicabilidad por perfil.
+
+    TemplateWeights:
+      type: object
+      properties:
+        risk: { type: number, minimum: 0, maximum: 1, example: 0.2 }
+        liquidity: { type: number, minimum: 0, maximum: 1, example: 0.2 }
+        debt: { type: number, minimum: 0, maximum: 1, example: 0.25 }
+        savingsGap: { type: number, minimum: 0, maximum: 1, example: 0.15 }
+        age: { type: number, minimum: 0, maximum: 1, example: 0.1 }
+        stability: { type: number, minimum: 0, maximum: 1, example: 0.1 }
+      description: Pesos del scoring (la suma puede ser 1.0).
+
+    Envelopes:
+      type: object
+      additionalProperties:
+        type: number
+        minimum: 0
+        maximum: 1
+      description: >
+        Distribución de sobres. Nota: se recomienda que la suma de sobres sea <= 1.0.
+      example: { fijos: 0.45, variables: 0.30, objetivos: 0.25 }
+
+    TemplateDefaults:
+      type: object
+      properties:
+        savingPct: { type: number, minimum: 0, maximum: 1, example: 0.25 }
+        emergencyMonths: { type: integer, minimum: 0, maximum: 24, example: 6 }
+        envelopes: { $ref: '#/components/schemas/Envelopes' }
+
+    PlanTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+          example: EQUILIBRADO_50_30_20
+        name:
+          type: string
+          minLength: 3
+          maxLength: 120
+          pattern: "^[A-Za-z0-9 _\\-\\.]+$"
+          example: Equilibrado 50/30/20
+        description:
+          type: string
+          minLength: 3
+          maxLength: 1000
+          example: Adaptación 50/30/20 a tus datos reales y deudas.
+        defaults: { $ref: '#/components/schemas/TemplateDefaults' }
+        constraints: { $ref: '#/components/schemas/TemplateConstraints' }
+        applicabilityRules: { $ref: '#/components/schemas/TemplateApplicabilityRules' }
+        weights: { $ref: '#/components/schemas/TemplateWeights' }
+        active:
+          type: boolean
+          default: true
+      required: [id, name, defaults]
+
+    TemplateData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/PlanTemplate' }
+      required: [data]
+
+    TemplateListData:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PlanTemplate' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+      required: [data]
+
+    # ---- Perfil y agregados de entrada (API-first) ----
+
+    Goal:
+      type: string
+      enum: [emergency, housing, travel, investment, debt_reduction]
+
+    ProfileSnapshot:
+      type: object
+      properties:
+        age: { type: integer, minimum: 16, maximum: 100, example: 32 }
+        stabilityIndex: { type: number, minimum: 0, maximum: 1, example: 0.7 }
+        liquidityNeed: { type: number, minimum: 0, maximum: 1, example: 0.4 }
+        riskScore: { type: integer, minimum: 1, maximum: 5, example: 3 }
+        debtSeverity: { type: number, minimum: 0, maximum: 1, example: 0.2 }
+        incomeNet: { type: number, format: double, minimum: 0, example: 2500.00 }
+        expensesFixed: { type: number, format: double, minimum: 0, example: 1200.00 }
+        expensesVariable: { type: number, format: double, minimum: 0, example: 600.00 }
+        dependents: { type: integer, minimum: 0, maximum: 20, example: 0 }
+        horizon: { type: string, enum: [short, medium, long], example: medium }
+        goals:
+          type: array
+          items: { $ref: '#/components/schemas/Goal' }
+      required: [stabilityIndex, liquidityNeed, riskScore]
+
+    AccountsAggregate:
+      type: object
+      properties:
+        totalBalance: { $ref: '#/components/schemas/Money' }
+        byCurrency:
+          type: array
+          items:
+            type: object
+            properties:
+              currency: { $ref: '#/components/schemas/Currency' }
+              balance: { type: number, format: double, multipleOf: 0.01 }
+            required: [currency, balance]
+          example:
+            - currency: EUR
+              balance: 3250.50
+            - currency: USD
+              balance: 150.10
+
+    SpendCategory:
+      type: string
+      enum: [rent, utilities, groceries, transport, leisure, travel, health, education, other]
+
+    SpendSummary:
+      type: object
+      properties:
+        periodDays: { type: integer, minimum: 7, maximum: 730, example: 90 }
+        totalOut: { type: number, format: double, minimum: 0, example: 1800.00 }
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              category: { $ref: '#/components/schemas/SpendCategory' }
+              amount: { type: number, format: double, minimum: 0, multipleOf: 0.01 }
+            required: [category, amount]
+          example:
+            - category: groceries
+              amount: 350.00
+            - category: transport
+              amount: 120.00
+            - category: leisure
+              amount: 220.00
+
+    DebtItem:
+      type: object
+      properties:
+        id: { type: string, minLength: 1, maxLength: 64, example: 'credit_card_1' }
+        apr: { type: number, minimum: 0, maximum: 1, example: 0.1999 }
+        remainingPrincipal: { type: number, format: double, minimum: 0, example: 2400.00 }
+        minPayment: { type: number, format: double, minimum: 0, example: 60.00 }
+      required: [id, apr, remainingPrincipal]
+
+    DebtSummary:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DebtItem' }
+        totalRemaining: { type: number, format: double, minimum: 0, example: 5400.00 }
+
+    # ---- Plan y KPIs ----
+
+    PlanAdjustments:
+      type: object
+      properties:
+        saving_pct: { type: number, minimum: 0, maximum: 1, example: 0.27 }
+        emergency_months: { type: integer, minimum: 0, maximum: 24, example: 7 }
+        envelopes: { $ref: '#/components/schemas/Envelopes' }
+
+    PlanKPIs:
+      type: object
+      properties:
+        savingRate: { type: number, minimum: 0, maximum: 1, example: 0.26 }
+        runwayMonths: { type: number, minimum: 0, maximum: 480, example: 6.8 }
+        budgetCompliance: { type: number, minimum: 0, maximum: 1, example: 0.91 }
+
+    PlanStatus:
+      type: string
+      enum: [draft, active, archived]
+      example: active
+
+    Plan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        planVersion: { type: string, format: date-time, example: '2025-08-18T09:12:00Z' }
+        status: { $ref: '#/components/schemas/PlanStatus' }
+        templateId: { type: string, pattern: '^[A-Z0-9_]+$', example: EQUILIBRADO_50_30_20 }
+        adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
+        rationale: { type: string, maxLength: 2000 }
+        alerts:
+          type: array
+          items: { type: string, maxLength: 300 }
+        kpis: { $ref: '#/components/schemas/PlanKPIs' }
+      required: [id, userId, planVersion, status, templateId, adjustments, kpis]
+
+    PlanData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Plan' }
+      required: [data]
+
+    PlanListData:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Plan' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+      required: [data]
+
+    ScorePreviewItem:
+      type: object
+      properties:
+        templateId: { type: string, pattern: '^[A-Z0-9_]+$' }
+        score: { type: number, minimum: 0, maximum: 1 }
+        factors:
+          type: object
+          additionalProperties: { type: number, minimum: 0, maximum: 1 }
+      required: [templateId, score]
+
+    ScorePreviewData:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/ScorePreviewItem' }
+      required: [data]
+
+    PlanSimulationData:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            base: { $ref: '#/components/schemas/PlanKPIs' }
+            scenario:
+              type: object
+              properties:
+                changes: { $ref: '#/components/schemas/PlanAdjustments' }
+                kpis: { $ref: '#/components/schemas/PlanKPIs' }
+          required: [base, scenario]
+      required: [data]
+
+  ###########################################################################
+  # REQUEST BODIES
+  ###########################################################################
+
+  requestBodies:
+
+    TemplateRequestBody:
+      description: Datos completos de la plantilla.
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PlanTemplate' }
+          examples:
+            sample:
+              value:
+                id: INVERSION_PROGRESIVA
+                name: Inversion Progresiva
+                description: Rampa de inversion mensual tras fondo 3-6 meses.
+                defaults:
+                  savingPct: 0.25
+                  emergencyMonths: 6
+                  envelopes: { fijos: 0.45, variables: 0.30, objetivos: 0.25 }
+                constraints:
+                  minSavingPct: 0.10
+                  maxSavingPct: 0.50
+                  minEmergencyMonths: 3
+                  maxEmergencyMonths: 12
+                applicabilityRules:
+                  minRisk: 3
+                  maxRisk: 5
+                  maxDebtSeverity: 0.5
+                  minLiquidityNeed: 0.0
+                weights: { risk: 0.2, liquidity: 0.15, debt: 0.25, savingsGap: 0.2, age: 0.1, stability: 0.1 }
+
+    ScorePreviewRequestBody:
+      description: Snapshot de perfil y agregados para calcular scoring.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              profile: { $ref: '#/components/schemas/ProfileSnapshot' }
+              accounts: { $ref: '#/components/schemas/AccountsAggregate' }
+              spend: { $ref: '#/components/schemas/SpendSummary' }
+              debts: { $ref: '#/components/schemas/DebtSummary' }
+            required: [profile]
+          examples:
+            sample:
+              value:
+                profile:
+                  age: 32
+                  stabilityIndex: 0.7
+                  liquidityNeed: 0.4
+                  riskScore: 3
+                  debtSeverity: 0.2
+                  incomeNet: 2500
+                  expensesFixed: 1200
+                  expensesVariable: 600
+                  horizon: medium
+                  goals: [emergency, investment]
+                accounts:
+                  totalBalance: { amount: 3250.50, currency: EUR }
+                  byCurrency:
+                    - { currency: EUR, balance: 3250.50 }
+                spend:
+                  periodDays: 90
+                  totalOut: 1800
+                  categories:
+                    - { category: groceries, amount: 350 }
+                    - { category: leisure, amount: 220 }
+                debts:
+                  items:
+                    - { id: credit_card_1, apr: 0.1999, remainingPrincipal: 2400, minPayment: 60 }
+
+    PlanGenerateRequestBody:
+      description: Solicitud de generación/regeneración del plan.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              userId:
+                type: string
+                format: uuid
+              mode:
+                type: string
+                enum: [rules, rules_plus_gpt]
+                default: rules_plus_gpt
+              forceTemplateId:
+                type: string
+                pattern: '^[A-Z0-9_]+$'
+              profile:
+                $ref: '#/components/schemas/ProfileSnapshot'
+              accounts:
+                $ref: '#/components/schemas/AccountsAggregate'
+              spend:
+                $ref: '#/components/schemas/SpendSummary'
+              debts:
+                $ref: '#/components/schemas/DebtSummary'
+              explain:
+                type: boolean
+                default: true
+            required: [userId, mode, profile]
+          examples:
+            sample:
+              value:
+                userId: 11111111-2222-3333-4444-555555555555
+                mode: rules_plus_gpt
+                profile:
+                  age: 32
+                  stabilityIndex: 0.7
+                  liquidityNeed: 0.4
+                  riskScore: 3
+                  debtSeverity: 0.2
+                  incomeNet: 2500
+                  expensesFixed: 1200
+                  expensesVariable: 600
+                  goals: [emergency, investment]
+                accounts:
+                  totalBalance: { amount: 3250.50, currency: EUR }
+                spend:
+                  periodDays: 90
+                  totalOut: 1800
+                explain: true
+
+    PlanUpdateRequestBody:
+      description: Ajustes manuales del plan (envelopes/porcentajes/meses).
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
+            required: [adjustments]
+          examples:
+            sample:
+              value:
+                adjustments:
+                  saving_pct: 0.30
+                  emergency_months: 8
+                  envelopes: { variables: 0.24 }
+
+    PlanRecomputeRequestBody:
+      description: Recalcula KPIs y/o nueva version bajo condiciones.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              reason:
+                type: string
+                enum: [balance_change, spend_drift, periodic_review, manual]
+                example: balance_change
+              thresholdPct:
+                type: number
+                minimum: 0
+                maximum: 1
+                example: 0.05
+              allowNewVersion:
+                type: boolean
+                default: false
+          examples:
+            balanceChange:
+              value: { reason: balance_change, thresholdPct: 0.05, allowNewVersion: true }
+
+    PlanSimulationRequestBody:
+      description: Cambios de escenario para simulación (no persistente).
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PlanAdjustments'
+          examples:
+            sample:
+              value:
+                saving_pct: 0.30
+                envelopes: { variables: 0.24 }
+
+  ###########################################################################
+  # RESPONSES
+  ###########################################################################
+
+  responses:
+
+    '204':
+      description: No Content.
+
+    '400':
+      description: Bad Request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            invalid-params:
+              value:
+                messages:
+                  - code: BAD_REQUEST
+                    message: Invalid parameters
+                    type: ERROR
+                    description: A parameter has not been provided correctly.
+
+    '401':
+      description: Unauthorized.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            unauthorized:
+              value:
+                messages:
+                  - code: UNAUTHORIZED
+                    message: Missing or invalid token
+                    type: ERROR
+                    description: Failure to present credentials correctly.
+
+    '403':
+      description: Forbidden.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            forbidden:
+              value:
+                messages:
+                  - code: FORBIDDEN
+                    message: Forbidden
+                    type: FATAL
+                    description: You do not have permissions to operate with this invocation.
+
+    '404':
+      description: Not Found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            not-found:
+              value:
+                messages:
+                  - code: NOT_FOUND
+                    message: Resource not found
+                    type: FATAL
+                    description: The requested resource does not exist.
+
+    '409':
+      description: Conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            conflict:
+              value:
+                messages:
+                  - code: CONFLICT
+                    message: State conflict
+                    type: ERROR
+                    description: Template in use by active plans.
+
+    '422':
+      description: Unprocessable Entity.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            unprocessable:
+              value:
+                messages:
+                  - code: UNPROCESSABLE_ENTITY
+                    message: Business rule violated
+                    type: ERROR
+                    description: Sum of envelopes exceeds 1.0.
+
+    '429':
+      description: Too Many Requests.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            rate-limit:
+              value:
+                messages:
+                  - code: RATE_LIMIT
+                    message: Too many requests
+                    type: ERROR
+                    description: Backoff and retry later.
+
+    '500':
+      description: Internal Server Error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            err500:
+              value:
+                messages:
+                  - code: INTERNAL_SERVER_ERROR
+                    message: Internal server error
+                    type: FATAL
+                    description: Unexpected error from server.
+
+    '502':
+      description: Bad Gateway.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            bad-gateway:
+              value:
+                messages:
+                  - code: BAD_GATEWAY
+                    message: Upstream error
+                    type: ERROR
+                    description: LLM adapter returned invalid response.
+
+    '503':
+      description: Service Unavailable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            service-unavailable:
+              value:
+                messages:
+                  - code: SERVICE_UNAVAILABLE
+                    message: Dependency unavailable
+                    type: ERROR
+                    description: Database or dependency is down.
+
+    '504':
+      description: Gateway Timeout.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            timeout:
+              value:
+                messages:
+                  - code: GATEWAY_TIMEOUT
+                    message: Timeout
+                    type: ERROR
+                    description: Timeout waiting for LLM adapter or scoring engine.
+
+security:
+  - bearerAuth: []
