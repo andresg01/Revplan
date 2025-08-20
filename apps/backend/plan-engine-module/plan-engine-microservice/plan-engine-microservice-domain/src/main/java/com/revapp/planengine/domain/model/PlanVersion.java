@@ -18,4 +18,5 @@ public class PlanVersion {
     private List<String> alerts;
     private PlanSourceEnum source;        // RULES | RULES_GPT
     private LocalDateTime createdAt;
+    private AiMeta aiMeta;
 }

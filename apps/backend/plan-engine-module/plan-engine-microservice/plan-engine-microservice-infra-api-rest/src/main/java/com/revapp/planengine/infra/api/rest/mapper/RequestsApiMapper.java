@@ -85,6 +85,7 @@ public interface RequestsApiMapper {
                 .spend(toModel(dto.getSpend()))
                 .debts(toModel(dto.getDebts()))
                 .explain(Boolean.TRUE.equals(dto.getExplain()))
+                .aiOptions(toModel(dto.getAiOptions()))
                 .build();
         return req;
     }
@@ -156,7 +157,7 @@ public interface RequestsApiMapper {
 
     default CurrencyEnum toModel(CurrencyDTO c) {
         if (c == null) return null;
-        return CurrencyEnum.valueOf(c.name()); // EUR, USD, GBP, CHF, JPY (coinciden)
+        return CurrencyEnum.valueOf(c.name()); // EUR, USD, GBP, CHF, JPY
     }
 
     // ---- SpendSummary ----
@@ -202,6 +203,18 @@ public interface RequestsApiMapper {
         b.items(items);
         b.totalRemaining(toBig(dto.getTotalRemaining()));
         return b.build();
+    }
+
+    // AiOptions (DTO -> domain) ----
+    default com.revapp.planengine.domain.model.AiOptions toModel(AiOptionsDTO dto) {
+        if (dto == null) return null;
+        Double temperature = dto.getTemperature() != null ? dto.getTemperature().doubleValue() : null;
+        return com.revapp.planengine.domain.model.AiOptions.builder()
+                .provider(dto.getProvider())
+                .model(dto.getModel())
+                .temperature(temperature)
+                .promptVersion(dto.getPromptVersion())
+                .build();
     }
 
     // ---- helpers ----

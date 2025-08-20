@@ -56,7 +56,7 @@ public class PlanActiveView {
 
     @Convert(converter = PlanSourceConverter.class)
     @Column(name = "source", nullable = false, length = 16)
-    private PlanSourceEnum source;
+    private PlanSourceEnum source; // RULES | RULES_GPT
 
     @Column(name = "version_created_at", nullable = false)
     private LocalDateTime versionCreatedAt;

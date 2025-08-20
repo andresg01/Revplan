@@ -12,10 +12,15 @@ STACK_NETWORK_KEY ?= plan-engine-network
 COMPOSE := $(shell (docker compose version >/dev/null 2>&1 && echo "docker compose") || \
                      (docker-compose version >/dev/null 2>&1 && echo "docker-compose"))
 
-# Nombre real que usa compose para la red y volúmenes (scoped por proyecto)
-COMPOSE_NET := $(PROJECT)_$(STACK_NETWORK_KEY)
+# Nombre de la red a usar (sin prefijo del proyecto)
+COMPOSE_NET := $(STACK_NETWORK_KEY)
 VOL_DB_SCOPED  := $(PROJECT)_plan-pg-data
 VOL_PGA_SCOPED := $(PROJECT)_plan-pgadmin-data
+
+# =========
+# Configuración global
+# =========
+export DOCKER_BUILDKIT=0
 
 # =========
 # Ayuda
@@ -50,7 +55,7 @@ check:
 
 .PHONY: network
 network:
-	@# Crea la red del stack si no existe (compose también la creará en 'up', pero lo hacemos explícito)
+	@# Crea la red externa si no existe
 	@if ! docker network inspect $(COMPOSE_NET) >/dev/null 2>&1; then \
 		echo ">> Creando red $(COMPOSE_NET)"; \
 		docker network create $(COMPOSE_NET); \
@@ -62,7 +67,7 @@ network:
 # Ciclo de vida
 # =========
 .PHONY: up
-up: network
+up: remove-wrong-network network
 	$(COMPOSE) -p $(PROJECT) -f $(COMPOSE_FILE) up -d --build
 	@echo ">> Stack levantado. Swagger en http://localhost:8080/swagger-ui.html (cuando el micro arranque)"
 
@@ -78,13 +83,15 @@ build-nc:
 down:
 	$(COMPOSE) -p $(PROJECT) -f $(COMPOSE_FILE) down
 
+# Elimina la red con nombre "prefijado" si existe (evita el error de etiquetas de Compose)
+.PHONY: remove-wrong-network
+remove-wrong-network:
+	-@docker network rm $(PROJECT)_$(STACK_NETWORK_KEY) 2>/dev/null || true
+
 .PHONY: nuke
 nuke:
 	$(COMPOSE) -p $(PROJECT) -f $(COMPOSE_FILE) down -v
-	@# Intenta limpiar la red del stack (si existe)
 	-@docker network rm $(COMPOSE_NET) 2>/dev/null || true
-	@# Si usaste nombres sin scope (no es tu caso), descomenta para intentar borrarlos:
-	# -@docker network rm $(STACK_NETWORK_KEY) 2>/dev/null || true
 	@echo ">> Limpieza completa (stack, volúmenes y red del proyecto)"
 
 # =========

@@ -13,7 +13,7 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
-public class ScoresController implements PlanEngineApi {
+public class ScoresController implements ScoresApi {
 
     private final ScorePreviewService scorePreviewService;
     private final ScoresApiMapper scoresApiMapper;
@@ -22,9 +22,10 @@ public class ScoresController implements PlanEngineApi {
     public ResponseEntity<ScorePreviewDataDTO> previewScores(UUID xRequestID,
                                                              PreviewScoresRequestDTO previewScoresRequestDTO,
                                                              String acceptLanguage) {
-        // El DTO de request no lo necesitamos aún; si tuviera nameFilter, puedes mapearlo aquí.
-        ScorePreviewRequest req = new ScorePreviewRequest(null);
+        var req = scoresApiMapper.toModel(previewScoresRequestDTO);
         var data = scorePreviewService.preview(req);
         return ResponseEntity.ok(scoresApiMapper.toDto(data));
     }
+
+
 }

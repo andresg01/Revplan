@@ -1,7 +1,6 @@
 server:
   port: 8080
 
-# Logging
 logging:
   config: classpath:config/log4j2/log4j2-local.xml
 
@@ -15,7 +14,6 @@ spring:
   profiles:
     active: local
 
-  # POSTGRES (el compose expone el servicio como 'postgres')
   datasource:
     url: jdbc:postgresql://localhost:5433/revplan
     username: revplan
@@ -44,7 +42,6 @@ spring:
       name: admin
       password: test
 
-# Auto springdoc-openapi (estilo hotels)
 springdoc:
   api-docs:
     path: /v3/api-docs
@@ -54,3 +51,19 @@ springdoc:
 app:
   api-rest:
     base-path: /artifact-app/v1
+
+openai:
+  apiKey: ${OPENAI_API_KEY:}
+  baseUrl: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  timeoutMs: ${OPENAI_TIMEOUT_MS:15000}
+  maxInMemoryBytes: ${OPENAI_MAX_IN_MEMORY_BYTES:2097152}
+
+ai:
+  defaults:
+    provider: ${AI_DEFAULTS_PROVIDER:openai}
+    model: ${AI_DEFAULTS_MODEL:gpt-5-mini}
+    temperature: ${AI_DEFAULTS_TEMPERATURE:0.2}
+    promptVersion: ${AI_DEFAULTS_PROMPT_VERSION:2025-08-19}
+  systemPromptPath: classpath:prompts/financial-planner-system.txt
+
+

@@ -10,7 +10,6 @@ import com.revapp.planengine.infra.api.rest.mapper.RequestsApiMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Optional;
@@ -18,7 +17,7 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
-public class PlansController implements PlanEngineApi {
+public class PlansController implements PlansApi {
 
     private final PlanService planService;
     private final PlanGenerationService planGenerationService;
@@ -45,39 +44,46 @@ public class PlansController implements PlanEngineApi {
 
     @Override
     public ResponseEntity<Void> updatePlan(UUID xRequestID, UUID planId,
-                                           UpdatePlanRequestDTO updatePlanRequestDTO, String acceptLanguage) {
-        var adjustments = requestsApiMapper.toModel(updatePlanRequestDTO);
+                                           UpdatePlanRequestDTO body, String acceptLanguage) {
+
         var updated = planService.getById(planId).map(existing -> {
-            existing.setAdjustments(adjustments);
+
+            if (body != null) {
+                // Aplica estado si viene informado
+                if (body.getStatus() != null) {
+                    existing.setStatus(planApiMapper.mapStatusToModel(body.getStatus()));
+                }
+                // Aplica ajustes si vienen informados
+                if (body.getAdjustments() != null) {
+                    existing.setAdjustments(planApiMapper.toModel(body.getAdjustments()));
+                }
+            }
+
             return planService.save(existing);
         });
+
         return updated.isPresent()
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).build();
     }
 
     @Override
-    public ResponseEntity<RecomputePlan202ResponseDTO> recomputePlan(UUID xRequestID, UUID planId,
-                                                                     RecomputePlanRequestDTO recomputePlanRequestDTO, String acceptLanguage) {
+    public ResponseEntity<RecomputePlan202ResponseDTO> recomputePlan(
+            UUID xRequestID, UUID planId,
+            RecomputePlanRequestDTO recomputePlanRequestDTO, String acceptLanguage) {
 
         var reason = requestsApiMapper.toModel(
                 recomputePlanRequestDTO != null ? recomputePlanRequestDTO.getReason() : null);
 
         UUID eventId = planRecomputeService.enqueueRecompute(planId, reason);
 
-        // Devolvemos 202 y, si existe setter compatible, incluimos el id por reflexión.
         RecomputePlan202ResponseDTO body = new RecomputePlan202ResponseDTO();
-        try {
-            var m = RecomputePlan202ResponseDTO.class.getMethod("setId", UUID.class);
-            m.invoke(body, eventId);
-        } catch (Exception ignored) {
-            try {
-                var m = RecomputePlan202ResponseDTO.class.getMethod("setEventId", UUID.class);
-                m.invoke(body, eventId);
-            } catch (Exception ignored2) { /* cuerpo vacío si no hay campos */ }
-        }
+        body.setStatus("accepted");
+        body.setRecomputeId(eventId);
+
         return ResponseEntity.accepted().body(body);
     }
+
 
     @Override
     public ResponseEntity<PlanSimulationDataDTO> simulatePlan(UUID xRequestID, UUID planId,

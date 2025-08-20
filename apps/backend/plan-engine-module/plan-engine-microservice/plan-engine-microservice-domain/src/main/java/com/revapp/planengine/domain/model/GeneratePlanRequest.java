@@ -27,4 +27,7 @@ public class GeneratePlanRequest {
     /** Pedir explicación del razonamiento (por defecto true como en el DTO). */
     @Builder.Default
     private boolean explain = true;
+
+    /** opciones IA opcionales que llegan en la request. */
+    private AiOptions aiOptions;
 }

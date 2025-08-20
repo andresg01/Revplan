@@ -12,16 +12,18 @@ public class PlanSourceConverter implements AttributeConverter<PlanSourceEnum, S
         if (attribute == null) return null;
         return switch (attribute) {
             case RULES -> "rules";
-            case RULES_PLUS_GPT -> "rules+gpt"; // BD usa '+'
+            case RULES_PLUS_GPT -> "rules+gpt";
         };
     }
 
     @Override
     public PlanSourceEnum convertToEntityAttribute(String dbData) {
         if (dbData == null) return null;
-        return switch (dbData) {
-            case "rules"    -> PlanSourceEnum.RULES;
-            case "rules+gpt"-> PlanSourceEnum.RULES_PLUS_GPT;
+        String v = dbData.trim().toLowerCase();
+        return switch (v) {
+            case "rules", "rule", "r" -> PlanSourceEnum.RULES;
+            case "rules+gpt", "rules_plus_gpt", "rules-gpt", "rulesgpt"
+                    -> PlanSourceEnum.RULES_PLUS_GPT;
             default -> throw new IllegalArgumentException("Unknown PlanSource db value: " + dbData);
         };
     }

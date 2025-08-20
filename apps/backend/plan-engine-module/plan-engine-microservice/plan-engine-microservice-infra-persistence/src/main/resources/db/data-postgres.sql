@@ -1,6 +1,6 @@
 -- ============================================
 -- Semillas iniciales (plantillas de plan)
--- Ejecuta esto después de schema-postgres.sql
+-- Ejecuta esto después del schema
 -- ============================================
 
 -- Limpia posibles datos previos de prueba (orden por FKs)
@@ -32,7 +32,7 @@ INSERT INTO plan_engine.plan_template (
     "min_emergency_months":3,
     "max_emergency_months":12,
     "saving_pct_range":[0.20,0.50],
-    "envelope_bounds":{"fijos":[0.40,0.60],"variables":[0.15,0.40],"objetivos":[0.10,0.40]}
+    "envelope_bounds":{"fixed":[0.40,0.60],"variable":[0.15,0.40],"goals":[0.10,0.40]}
   }'::jsonb,
   TRUE,
   'chk-emer-v1'
@@ -59,7 +59,7 @@ INSERT INTO plan_engine.plan_template (
   }'::jsonb,
   '{
     "saving_pct_range":[0.20,0.35],
-    "target_split":{"fijos":0.50,"variables":0.30,"objetivos":0.20},
+    "target_split":{"fixed":0.50,"variable":0.30,"goals":0.20},
     "tolerance":0.05
   }'::jsonb,
   TRUE,
@@ -140,12 +140,20 @@ SELECT
   '{
     "saving_pct":0.27,
     "emergency_months":7,
-    "envelopes":{"fijos":0.45,"variables":0.28,"objetivos":0.27}
+    "envelopes":{"fixed":0.45,"variable":0.28,"goals":0.27},
+    "ai_meta": {
+      "provider":"openai",
+      "model":"gpt-4o-mini",
+      "promptVersion":"2025-08-19",
+      "tokensPrompt": 1111,
+      "tokensOutput": 333,
+      "latencyMs": 720
+    }
   }'::jsonb,
   '{
-    "tasa_ahorro":0.27,
-    "runway_meses":5.8,
-    "cumplimiento_global":0.92
+    "savingRate":0.27,
+    "runwayMonths":5.8,
+    "budgetCompliance":1.00
   }'::jsonb,
   'Plan inicial basado en perfil equilibrado.',
   '["Ajusta ocio si superas 10% del limite"]'::jsonb,

@@ -46,7 +46,7 @@ paths:
   # TEMPLATES
   ###########################################################################
 
-  /plan-engine/v0/templates:
+  /templates:
     parameters:
       - $ref: '#/components/parameters/Accept-Language-Header'
       - $ref: '#/components/parameters/X-Request-Id-Header'
@@ -116,7 +116,7 @@ paths:
         '429': { $ref: '#/components/responses/429' }
         '500': { $ref: '#/components/responses/500' }
 
-  /plan-engine/v0/templates/{templateId}:
+  /templates/{templateId}:
     parameters:
       - $ref: '#/components/parameters/Accept-Language-Header'
       - $ref: '#/components/parameters/X-Request-Id-Header'
@@ -161,7 +161,7 @@ paths:
   # SCORING PREVIEW
   ###########################################################################
 
-  /plan-engine/v0/scores/preview:
+  /scores/preview:
     post:
       tags: [Scores]
       summary: Calcula el scoring de todas las plantillas para un perfil dado (sin persistir).
@@ -195,7 +195,7 @@ paths:
   # PLANS
   ###########################################################################
 
-  /plan-engine/v0/plans:
+  /plans:
     parameters:
       - $ref: '#/components/parameters/Accept-Language-Header'
       - $ref: '#/components/parameters/X-Request-Id-Header'
@@ -220,7 +220,7 @@ paths:
         '422': { $ref: '#/components/responses/422' }
         '500': { $ref: '#/components/responses/500' }
 
-  /plan-engine/v0/plans/generate:
+  /plans/generate:
     post:
       tags: [Plans]
       summary: Genera o regenera un plan (reglas + opcional GPT).
@@ -269,7 +269,7 @@ paths:
         '503': { $ref: '#/components/responses/503' }
         '504': { $ref: '#/components/responses/504' }
 
-  /plan-engine/v0/plans/{planId}:
+  /plans/{planId}:
     parameters:
       - $ref: '#/components/parameters/Accept-Language-Header'
       - $ref: '#/components/parameters/X-Request-Id-Header'
@@ -300,7 +300,7 @@ paths:
         '422': { $ref: '#/components/responses/422' }
         '500': { $ref: '#/components/responses/500' }
 
-  /plan-engine/v0/plans/{planId}/recompute:
+  /plans/{planId}/recompute:
     post:
       tags: [Plans]
       summary: Fuerza recálculo de KPIs y (opcionalmente) nueva versión.
@@ -330,7 +330,7 @@ paths:
   # SIMULATIONS
   ###########################################################################
 
-  /plan-engine/v0/plans/{planId}/simulate:
+  /plans/{planId}/simulate:
     post:
       tags: [Simulation]
       summary: Simula cambios (what-if) sin persistir.
@@ -371,10 +371,10 @@ paths:
 components:
 
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
 
   ###########################################################################
   # HEADERS
@@ -776,30 +776,83 @@ components:
 
     PlanStatus:
       type: string
-      enum: [draft, active, archived]
+      enum: [draft, active, archived, paused]
       example: active
-
     Plan:
       type: object
       properties:
-        id: { type: string, format: uuid }
-        userId: { type: string, format: uuid }
-        planVersion: { type: string, format: date-time, example: '2025-08-18T09:12:00Z' }
-        status: { $ref: '#/components/schemas/PlanStatus' }
-        templateId: { type: string, pattern: '^[A-Z0-9_]+$', example: EQUILIBRADO_50_30_20 }
-        adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
-        rationale: { type: string, maxLength: 2000 }
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        planVersion:
+          type: string
+          format: date-time
+          example: '2025-08-18T09:12:00Z'
+        status:
+          $ref: '#/components/schemas/PlanStatus'
+        templateId:
+          type: string
+          pattern: '^[A-Z0-9_]+$'
+          example: EQUILIBRADO_50_30_20
+        adjustments:
+          $ref: '#/components/schemas/PlanAdjustments'
+        rationale:
+          type: string
+          maxLength: 2000
         alerts:
           type: array
-          items: { type: string, maxLength: 300 }
-        kpis: { $ref: '#/components/schemas/PlanKPIs' }
-      required: [id, userId, planVersion, status, templateId, adjustments, kpis]
+          items:
+            type: string
+            maxLength: 300
+        kpis:
+          $ref: '#/components/schemas/PlanKPIs'
+        aiMeta:
+          $ref: '#/components/schemas/AiMeta'
+      required:
+        - id
+        - userId
+        - planVersion
+        - status
+        - templateId
+        - adjustments
+        - kpis
 
     PlanData:
       type: object
       properties:
-        data: { $ref: '#/components/schemas/Plan' }
-      required: [data]
+        data:
+          $ref: '#/components/schemas/Plan'
+      required:
+        - data
+      example:
+        data:
+          id: 6a2f2f40-6c09-4b35-8d46-0e0f8b1c0a11
+          userId: 11111111-2222-3333-4444-555555555555
+          planVersion: '2025-08-18T09:12:00Z'
+          status: active
+          templateId: EQUILIBRADO_50_30_20
+          adjustments:
+            saving_pct: 0.27
+            emergency_months: 7
+            envelopes: { fijos: 0.45, variables: 0.28, objetivos: 0.27 }
+          rationale: 'Priorizamos colchón y ligera subida de ahorro'
+          alerts: ['Ajusta ocio si superas 10% del limite']
+          kpis:
+            savingRate: 0.26
+            runwayMonths: 6.8
+            budgetCompliance: 0.91
+          aiMeta:
+            provider: openai
+            model: gpt-5
+            promptVersion: '2025-08-19'
+            temperature: 0.2
+            tokensPrompt: 1234
+            tokensOutput: 456
+            latencyMs: 820
+
 
     PlanListData:
       type: object
@@ -842,6 +895,64 @@ components:
                 kpis: { $ref: '#/components/schemas/PlanKPIs' }
           required: [base, scenario]
       required: [data]
+
+    UpdatePlanRequest:
+      type: object
+      description: Cambios del plan estado y/o ajustes.
+      properties:
+        status: { $ref: '#/components/schemas/PlanStatus' }
+        adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
+      # evita {} vacíos:
+      minProperties: 1
+
+    AiMeta:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: openai
+        model:
+          type: string
+          example: gpt-5
+        promptVersion:
+          type: string
+          example: '2025-08-19'
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          example: 0.2
+        tokensPrompt:
+          type: integer
+          minimum: 0
+          example: 1234
+        tokensOutput:
+          type: integer
+          minimum: 0
+          example: 456
+        latencyMs:
+          type: integer
+          minimum: 0
+          example: 820
+
+
+    AiOptions:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: openai
+        model:
+          type: string
+          example: gpt-5
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.2
+        promptVersion:
+          type: string
+          example: '2025-08-19'
 
   ###########################################################################
   # REQUEST BODIES
@@ -947,9 +1058,24 @@ components:
               explain:
                 type: boolean
                 default: true
-            required: [userId, mode, profile]
+              aiOptions:
+                $ref: '#/components/schemas/AiOptions'
+            required:
+              - userId
+              - mode
+              - profile
           examples:
-            sample:
+            minimal_rules:
+              summary: Mínimo (modo reglas)
+              value:
+                userId: 11111111-2222-3333-4444-555555555555
+                mode: rules
+                profile:
+                  stabilityIndex: 0.7
+                  liquidityNeed: 0.4
+                  riskScore: 3
+            full_rules_plus_gpt:
+              summary: Completo (reglas + GPT con opciones y agregados)
               value:
                 userId: 11111111-2222-3333-4444-555555555555
                 mode: rules_plus_gpt
@@ -968,24 +1094,41 @@ components:
                 spend:
                   periodDays: 90
                   totalOut: 1800
+                debts:
+                  items:
+                    - id: credit_card_1
+                      apr: 0.1999
+                      remainingPrincipal: 2400
+                      minPayment: 60
                 explain: true
+                aiOptions:
+                  provider: openai
+                  model: gpt-5
+                  temperature: 0.2
+                  promptVersion: '2025-08-19'
+
 
     PlanUpdateRequestBody:
-      description: Ajustes manuales del plan (envelopes/porcentajes/meses).
+      description: Ajustes manuales del plan o cambio de estado.
       required: true
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
-            required: [adjustments]
+            $ref: '#/components/schemas/UpdatePlanRequest'
           examples:
-            sample:
+            statusOnly:
+              value: { status: paused }
+            adjustmentsOnly:
               value:
                 adjustments:
                   saving_pct: 0.30
                   emergency_months: 8
+                  envelopes: { variables: 0.24 }
+            both:
+              value:
+                status: paused
+                adjustments:
+                  saving_pct: 0.30
                   envelopes: { variables: 0.24 }
 
     PlanRecomputeRequestBody:
@@ -1189,4 +1332,4 @@ components:
                     description: Timeout waiting for LLM adapter or scoring engine.
 
 security:
-  - bearerAuth: []
+  - ApiKeyAuth: []

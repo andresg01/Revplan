@@ -14,7 +14,7 @@ import java.util.List;
 @Mapper(componentModel = "spring", uses = { PaginationApiMapper.class })
 public interface PlanApiMapper {
 
-    // ---- Plan <-> DTO ----
+    // ---- Plan -> DTO ----
     @Mapping(target = "id",          source = "id")
     @Mapping(target = "userId",      source = "userId")
     @Mapping(target = "planVersion", source = "planVersion")
@@ -24,6 +24,7 @@ public interface PlanApiMapper {
     @Mapping(target = "rationale",   source = "rationale")
     @Mapping(target = "alerts",      source = "alerts")
     @Mapping(target = "kpis",        source = "kpis")
+    @Mapping(target = "aiMeta",      source = "aiMeta")
     PlanDTO toDto(Plan model);
 
     default PlanDataDTO toData(Plan model) {
@@ -75,15 +76,54 @@ public interface PlanApiMapper {
         return new PlanKPIs(dto.getSavingRate(), dto.getRunwayMonths(), dto.getBudgetCompliance());
     }
 
+    default AiMetaDTO toDto(com.revapp.planengine.domain.model.AiMeta m) {
+        if (m == null) return null;
+        AiMetaDTO dto = new AiMetaDTO();
+        dto.setProvider(m.getProvider());
+        dto.setModel(m.getModel());
+        dto.setPromptVersion(m.getPromptVersion());
+        dto.setTemperature(m.getTemperature() != null ? java.math.BigDecimal.valueOf(m.getTemperature()) : null);
+        dto.setTokensPrompt(m.getTokensPrompt());
+        dto.setTokensOutput(m.getTokensOutput());
+        dto.setLatencyMs(m.getLatencyMs());
+        return dto;
+    }
+
+    // (opcional si algún flujo te requiere DTO -> domain)
+    default com.revapp.planengine.domain.model.AiMeta toModel(AiMetaDTO dto) {
+        if (dto == null) return null;
+        Double temperature = dto.getTemperature() != null ? dto.getTemperature().doubleValue() : null;
+        return com.revapp.planengine.domain.model.AiMeta.builder()
+                .provider(dto.getProvider())
+                .model(dto.getModel())
+                .promptVersion(dto.getPromptVersion())
+                .temperature(temperature)
+                .tokensPrompt(dto.getTokensPrompt())
+                .tokensOutput(dto.getTokensOutput())
+                .latencyMs(dto.getLatencyMs())
+                .build();
+    }
+
     // ---- enums ----
     @Named("mapStatusToDto")
     default PlanStatusDTO mapStatusToDto(PlanStatusEnum st) {
         if (st == null) return null;
         return switch (st) {
-            case DRAFT -> PlanStatusDTO.DRAFT;
-            case ACTIVE -> PlanStatusDTO.ACTIVE;
+            case DRAFT    -> PlanStatusDTO.DRAFT;
+            case ACTIVE   -> PlanStatusDTO.ACTIVE;
             case ARCHIVED -> PlanStatusDTO.ARCHIVED;
-            default -> PlanStatusDTO.DRAFT;
+            case PAUSED   -> PlanStatusDTO.PAUSED;
+        };
+    }
+
+    @Named("mapStatusToModel")
+    default PlanStatusEnum mapStatusToModel(PlanStatusDTO dto) {
+        if (dto == null) return null;
+        return switch (dto) {
+            case DRAFT    -> PlanStatusEnum.DRAFT;
+            case ACTIVE   -> PlanStatusEnum.ACTIVE;
+            case ARCHIVED -> PlanStatusEnum.ARCHIVED;
+            case PAUSED   -> PlanStatusEnum.PAUSED;
         };
     }
 }

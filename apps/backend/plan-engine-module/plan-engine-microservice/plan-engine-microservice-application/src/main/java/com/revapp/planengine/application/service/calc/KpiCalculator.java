@@ -6,7 +6,11 @@ import java.math.RoundingMode;
 import java.util.Map;
 
 public final class KpiCalculator {
-    private static final MathContext MC = new MathContext(8, RoundingMode.HALF_UP);
+    // Precisión razonable y estable en prod
+    private static final MathContext MC = new MathContext(12, RoundingMode.HALF_UP);
+    // Tolerancia para tratar sumas ~1.0 como 1.0 exacto (evita 0.99/1.01 por redondeos)
+    private static final BigDecimal TOL = bd(0.005);
+
     private KpiCalculator(){}
 
     public static BigDecimal savingRate(BigDecimal savingPct) {
@@ -22,11 +26,19 @@ public final class KpiCalculator {
 
     public static BigDecimal budgetCompliance(Map<String, BigDecimal> envelopes) {
         if (envelopes == null || envelopes.isEmpty()) return bd(0);
-        BigDecimal sum = envelopes.values().stream().filter(v -> v != null).reduce(bd(0), BigDecimal::add);
+        BigDecimal sum = envelopes.values().stream()
+                .filter(v -> v != null)
+                .reduce(bd(0), BigDecimal::add);
+
+        // tolerancia: si suma ~1.0 => 1.0
         BigDecimal diff = sum.subtract(bd(1), MC).abs();
-        return clamp01(bd(1).subtract(diff, MC));
+        if (diff.compareTo(TOL) <= 0) return bd(1);
+
+        BigDecimal raw = bd(1).subtract(diff, MC);
+        return clamp01(raw);
     }
 
+    // ---- helpers ----
     private static BigDecimal bd(double d) { return new BigDecimal(String.valueOf(d), MC); }
     private static BigDecimal nz(BigDecimal x){ return x == null ? bd(0) : x; }
     private static BigDecimal clamp01(BigDecimal x){

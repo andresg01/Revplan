@@ -1,6 +1,9 @@
 package com.revapp.planengine.config;
 
 import com.revapp.planengine.application.service.impl.*;
+import com.revapp.planengine.application.service.utils.AiDefaults;
+import com.revapp.planengine.application.service.utils.PlanMerger;
+import com.revapp.planengine.application.service.utils.PromptBuilder;
 import com.revapp.planengine.domain.repository.*;
 import com.revapp.planengine.domain.service.*;
 import org.springframework.context.annotation.Bean;
@@ -24,12 +27,20 @@ public class BeanConfiguration {
     public PlanGenerationService planGenerationService(final PlanRepository planRepository,
                                                        final PlanVersionRepository planVersionRepository,
                                                        final PlanReadRepository planReadRepository,
-                                                       final PlanTemplateRepository planTemplateRepository) {
+                                                       final PlanTemplateRepository planTemplateRepository,
+                                                       final PlanAiRepository planAiRepository,
+                                                       final PromptBuilder promptBuilder,
+                                                       final PlanMerger planMerger,
+                                                       final AiDefaults aiDefaults) {
         return new PlanGenerationServiceImpl(
                 planRepository,
                 planVersionRepository,
                 planReadRepository,
-                planTemplateRepository
+                planTemplateRepository,
+                planAiRepository,
+                promptBuilder,
+                planMerger,
+                aiDefaults
         );
     }
 

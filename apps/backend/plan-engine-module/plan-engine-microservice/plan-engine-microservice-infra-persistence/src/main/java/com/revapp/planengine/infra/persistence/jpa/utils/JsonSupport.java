@@ -1,3 +1,10 @@
+/*******************************************************************************
+ *
+ * Autor: Andres Garcia
+ *
+ * © Axpe Consulting S.L. 2025. Todos los derechos reservados.
+ *
+ ******************************************************************************/
 package com.revapp.planengine.infra.persistence.jpa.utils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -16,23 +23,82 @@ public class JsonSupport {
     private final ObjectMapper om;
     public JsonSupport(ObjectMapper om) { this.om = om; }
 
-    // ---------- Genérico
+    /* =================== Genérico =================== */
     public <T> T to(Map<String,Object> m, Class<T> type) {
         return m == null ? null : om.convertValue(m, type);
     }
 
-    // ---------- Map -> POJO (usados por MapStruct)
+    @Named("objToMap")
+    public Map<String,Object> toMap(Object v){
+        return v == null ? null : om.convertValue(v, new TypeReference<Map<String,Object>>(){});
+    }
+
+    /* =================== params → PlanAdjustments (DB → dominio) =================== */
     @Named("mapToPlanAdjustments")
-    public PlanAdjustments toPlanAdjustments(Map<String,Object> m){
-        return to(m, PlanAdjustments.class);
+    public PlanAdjustments mapToPlanAdjustments(Map<String,Object> src){
+        if (src == null) return null;
+        Map<String,Object> m = new HashMap<>();
+
+        // aceptar snake y camel
+        Double savingPct = asDouble(
+                src.get("saving_pct"),
+                src.get("savingPct")
+        );
+        Integer emergencyMonths = asIntFirst(
+                src.get("emergency_months"),
+                src.get("emergencyMonths")
+        );
+        Object envelopes = src.get("envelopes"); // ya es map
+
+        if (savingPct != null)       m.put("savingPct", savingPct);
+        if (emergencyMonths != null) m.put("emergencyMonths", emergencyMonths);
+        if (envelopes != null)       m.put("envelopes", envelopes);
+
+        return om.convertValue(m, PlanAdjustments.class);
     }
 
+    /* =================== PlanAdjustments → params (dominio → DB) =================== */
+    @Named("adjustmentsToParams")
+    public Map<String,Object> adjustmentsToParams(PlanAdjustments a){
+        Map<String,Object> m = new HashMap<>();
+        if (a == null) return m;
+        if (a.getSavingPct() != null)        m.put("saving_pct", a.getSavingPct());
+        if (a.getEmergencyMonths() != null)  m.put("emergency_months", a.getEmergencyMonths());
+        if (a.getEnvelopes() != null)        m.put("envelopes", a.getEnvelopes());
+        return m;
+    }
+
+    /* =================== kpis → PlanKPIs (DB → dominio) =================== */
     @Named("mapToPlanKPIs")
-    public PlanKPIs toPlanKPIs(Map<String,Object> m){
-        return to(m, PlanKPIs.class);
+    public PlanKPIs mapToPlanKPIs(Map<String,Object> src){
+        if (src == null) return null;
+        Map<String,Object> m = new HashMap<>();
+
+        // aceptar inglés camel, snake y seeds en español
+        Double savingRate       = asDouble(src.get("savingRate"), src.get("saving_rate"), src.get("tasa_ahorro"));
+        Double runwayMonths     = asDouble(src.get("runwayMonths"), src.get("runway_months"), src.get("runway_meses"));
+        Double budgetCompliance = asDouble(src.get("budgetCompliance"), src.get("budget_compliance"), src.get("cumplimiento_global"));
+
+        if (savingRate != null)       m.put("savingRate", savingRate);
+        if (runwayMonths != null)     m.put("runwayMonths", runwayMonths);
+        if (budgetCompliance != null) m.put("budgetCompliance", budgetCompliance);
+
+        return om.convertValue(m, PlanKPIs.class);
     }
 
-    // === Constraints (DB -> dominio) con normalización de nombres
+    /* =================== PlanKPIs → kpis (dominio → DB) =================== */
+    @Named("kpisToDb")
+    public Map<String,Object> kpisToDb(PlanKPIs k){
+        Map<String,Object> m = new HashMap<>();
+        if (k == null) return m;
+        // guardamos en camelCase (no hay trigger sobre claves de KPIs)
+        if (k.getSavingRate() != null)        m.put("savingRate", k.getSavingRate());
+        if (k.getRunwayMonths() != null)      m.put("runwayMonths", k.getRunwayMonths());
+        if (k.getBudgetCompliance() != null)  m.put("budgetCompliance", k.getBudgetCompliance());
+        return m;
+    }
+
+    /* =================== Constraints (DB → dominio) =================== */
     @Named("mapToTemplateConstraints")
     public TemplateConstraints toTemplateConstraints(Map<String,Object> src){
         if (src == null) return null;
@@ -54,10 +120,10 @@ public class JsonSupport {
         if (minEm != null) norm.put("minEmergencyMonths", asInt(minEm, null));
         if (maxEm != null) norm.put("maxEmergencyMonths", asInt(maxEm, null));
 
-        return to(norm, TemplateConstraints.class);
+        return om.convertValue(norm, TemplateConstraints.class);
     }
 
-    // === Weights (DB -> dominio): gap -> savingsGap, BigDecimal
+    /* =================== Weights (DB → dominio) =================== */
     @Named("mapToTemplateWeights")
     public TemplateWeights toTemplateWeights(Map<String,Object> src){
         if (src == null) return null;
@@ -65,53 +131,39 @@ public class JsonSupport {
         if (!norm.containsKey("savingsGap") && norm.containsKey("gap")) {
             norm.put("savingsGap", norm.get("gap"));
         }
-        // el resto de campos se mapean por nombre; Jackson convertirá a BigDecimal si tu POJO lo pide
-        return to(norm, TemplateWeights.class);
+        return om.convertValue(norm, TemplateWeights.class);
     }
 
-    // === Defaults derivados desde constraints_doc (DB -> dominio)
+    /* =================== Defaults derivados (DB → dominio) =================== */
     @Named("deriveDefaultsFromConstraintsDoc")
     public TemplateDefaults deriveDefaultsFromConstraintsDoc(Map<String, Object> constraintsDoc) {
         if (constraintsDoc == null) return null;
 
         Map<String,Object> m = new HashMap<>();
-
-        // savingPct = media del rango si existe
         BigDecimal savingPct = null;
         Object range = constraintsDoc.get("saving_pct_range");
         if (range instanceof List<?> l && l.size() == 2) {
             BigDecimal a = asBD(l.get(0), null), b = asBD(l.get(1), null);
-            if (a != null && b != null) {
-                savingPct = a.add(b).divide(BigDecimal.valueOf(2));
-            }
+            if (a != null && b != null) savingPct = a.add(b).divide(BigDecimal.valueOf(2));
         }
         if (savingPct != null) m.put("savingPct", savingPct);
 
-        // emergencyMonths = media redondeada si hay min/max
         Integer minEm = asInt(constraintsDoc.get("min_emergency_months"), null);
         Integer maxEm = asInt(constraintsDoc.get("max_emergency_months"), null);
-        if (minEm != null && maxEm != null) {
-            m.put("emergencyMonths", Math.round((minEm + maxEm) / 2f));
-        }
+        if (minEm != null && maxEm != null) m.put("emergencyMonths", Math.round((minEm + maxEm) / 2f));
 
-        // envelopes = target_split si existe (a BigDecimal)
         Object ts = constraintsDoc.get("target_split");
         if (ts instanceof Map<?, ?> tm) {
             Map<String, BigDecimal> env = new HashMap<>();
-            for (Map.Entry<?,?> e : ((Map<?,?>) ts).entrySet()) {
+            for (Map.Entry<?,?> e : tm.entrySet()) {
                 env.put(String.valueOf(e.getKey()), asBD(e.getValue(), BigDecimal.ZERO));
             }
             m.put("envelopes", env);
         }
-
-        if (m.isEmpty()) return null;
-        // Importante: usamos convertValue para evitar depender de builder/setters
-        return om.convertValue(m, TemplateDefaults.class);
+        return m.isEmpty() ? null : om.convertValue(m, TemplateDefaults.class);
     }
 
-    // ---------- POJO -> Map (jsonb) con traducciones
-
-    // constraints (dominio) -> constraints_doc (DB)
+    /* =================== constraints (dominio → DB) =================== */
     @Named("constraintsToDoc")
     public Map<String,Object> constraintsToDoc(TemplateConstraints c){
         if (c == null) return new HashMap<>();
@@ -127,7 +179,7 @@ public class JsonSupport {
         return m;
     }
 
-    // weights (dominio) -> scoring_weights (DB) con savingsGap -> gap
+    /* =================== weights (dominio → DB) =================== */
     @Named("weightsToMap")
     public Map<String,Object> weightsToMap(TemplateWeights w){
         if (w == null) return new HashMap<>();
@@ -141,13 +193,7 @@ public class JsonSupport {
         return m;
     }
 
-    // genérico (lo mantienes por compatibilidad)
-    @Named("objToMap")
-    public Map<String,Object> toMap(Object v){
-        return v == null ? null : om.convertValue(v, new TypeReference<Map<String,Object>>(){});
-    }
-
-    // ---- helpers (BigDecimal / Integer) ----
+    /* =================== helpers =================== */
     private BigDecimal asBD(Object o, BigDecimal def){
         if (o == null) return def;
         try { return new BigDecimal(String.valueOf(o)); } catch (Exception e) { return def; }
@@ -155,5 +201,20 @@ public class JsonSupport {
     private Integer asInt(Object o, Integer def){
         if (o == null) return def;
         try { return Integer.valueOf(String.valueOf(o)); } catch (Exception e) { return def; }
+    }
+    // devuelve el primer Integer parseable de la lista
+    private Integer asIntFirst(Object... candidates) {
+        for (Object c : candidates) if (c != null) {
+            if (c instanceof Number n) return n.intValue();
+            try { return Integer.valueOf(String.valueOf(c)); } catch (Exception ignored) {}
+        }
+        return null;
+    }
+    private Double asDouble(Object... candidates) {
+        for (Object c : candidates) if (c != null) {
+            if (c instanceof Number n) return n.doubleValue();
+            try { return Double.valueOf(String.valueOf(c)); } catch (Exception ignored) {}
+        }
+        return null;
     }
 }

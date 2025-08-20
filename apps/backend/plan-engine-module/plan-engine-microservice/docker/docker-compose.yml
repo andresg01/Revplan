@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   plan-engine-ms:
     container_name: plan-engine-ms
@@ -23,6 +21,8 @@ services:
       - SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA=plan_engine
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,7 +55,7 @@ services:
     container_name: pgadmin
     restart: unless-stopped
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@local
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
       - PGADMIN_DEFAULT_PASSWORD=admin
       - PGADMIN_CONFIG_SERVER_MODE=False
       - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
@@ -71,7 +71,8 @@ services:
 
 networks:
   plan-engine-network:
-    driver: bridge
+    external: true
+    name: plan-engine-network
 
 volumes:
   plan-pg-data:

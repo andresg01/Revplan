@@ -35,7 +35,7 @@ public class PlanVersionEntity {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "params", columnDefinition = "jsonb", nullable = false)
-    private Map<String, Object> params; // saving_pct, emergency_months, envelopes...
+    private Map<String, Object> params;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "kpis", columnDefinition = "jsonb", nullable = false)
@@ -50,7 +50,7 @@ public class PlanVersionEntity {
 
     @Convert(converter = PlanSourceConverter.class)
     @Column(name = "source", nullable = false, length = 16)
-    private PlanSourceEnum source; // 'rules' | 'rules_plus_gpt'
+    private PlanSourceEnum source;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

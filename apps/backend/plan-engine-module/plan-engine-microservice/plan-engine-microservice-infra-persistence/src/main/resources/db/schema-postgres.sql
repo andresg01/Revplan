@@ -96,9 +96,9 @@ BEGIN
     RAISE EXCEPTION 'kpis must be a JSON object';
   END IF;
 
-  -- source permitido
-  IF NEW.source NOT IN ('rules','rules+gpt') THEN
-    RAISE EXCEPTION 'source must be one of: rules, rules+gpt';
+  -- source permitido (tolerante con underscore/plus)
+  IF LOWER(NEW.source) NOT IN ('rules','rules_plus_gpt','rules+gpt') THEN
+    RAISE EXCEPTION 'source must be one of: rules, rules_plus_gpt';
   END IF;
 
   RETURN NEW;
@@ -161,11 +161,11 @@ CREATE TABLE IF NOT EXISTS plan_engine.plan_version (
   plan_id          UUID NOT NULL REFERENCES plan_engine.plan(id) ON DELETE CASCADE,
   version          INTEGER NOT NULL CHECK (version >= 1),
   template_id      TEXT NOT NULL REFERENCES plan_engine.plan_template(id),
-  params           JSONB NOT NULL,          -- ajustes (saving_pct, emergency_months, envelopes...)
-  kpis             JSONB NOT NULL,          -- tasa_ahorro, runway, cumplimiento, etc.
+  params           JSONB NOT NULL,          -- ajustes (saving_pct, emergency_months, envelopes..., ai_meta opcional)
+  kpis             JSONB NOT NULL,          -- savingRate, runwayMonths, budgetCompliance (o traducciones)
   rationale        TEXT,
   alerts           JSONB NOT NULL DEFAULT '[]'::jsonb,
-  source           TEXT NOT NULL,           -- 'rules' | 'rules+gpt' (validado en trigger)
+  source           TEXT NOT NULL,           -- 'rules' | 'rules_plus_gpt' | 'rules+gpt'
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (plan_id, version)
 );

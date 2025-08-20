@@ -2,16 +2,24 @@ package com.revapp.planengine.infra.api.rest.mapper;
 
 import com.revapp.planengine.domain.model.ScorePreviewData;
 import com.revapp.planengine.domain.model.ScorePreviewItem;
+import com.revapp.planengine.domain.model.ScorePreviewRequest;
+import com.revapp.planengine.infra.api.dto.PreviewScoresRequestDTO;
 import com.revapp.planengine.infra.api.dto.ScorePreviewDataDTO;
 import com.revapp.planengine.infra.api.dto.ScorePreviewItemDTO;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", uses = { RequestsApiMapper.class })
 public interface ScoresApiMapper {
 
+    // --- DTO -> Domain ---
+    @Mapping(target = "nameFilter", ignore = true)
+    ScorePreviewRequest toModel(PreviewScoresRequestDTO dto);
+
+    // --- Domain -> DTO ---
     default ScorePreviewDataDTO toDto(ScorePreviewData data) {
         if (data == null) return null;
         ScorePreviewDataDTO out = new ScorePreviewDataDTO();
