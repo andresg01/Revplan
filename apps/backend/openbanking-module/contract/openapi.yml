@@ -2,12 +2,12 @@ openapi: '3.0.3'
 info:
   title: Revplan OpenBanking Service API
   description: >
-    Microservicio interno para gestionar proveedores Open Banking (Tink/GoCardless/Revolut Business),
-    consentimiento, listado de instituciones, cuentas, balances, transacciones y recepción de webhooks.
+    API interna de Revplan para integrar con proveedores de Open Banking
+    (TrueLayer como proveedor principal en España, con soporte opcional de Tink).
   contact:
     name: Revplan Team
     email: andresgb01@icloud.com
-  version: '0.0.1'
+  version: '0.2.0'
 
 servers:
   - url: '{protocol}://{host}:{port}/{basePath}/{majorVersion}'
@@ -31,18 +31,91 @@ servers:
         default: v0
 
 tags:
+  - name: Connection
+    description: Flujo de conexión OAuth2/Open Banking (connect + callback).
   - name: Institutions
-    description: Gestión y consulta de instituciones soportadas por el proveedor.
+    description: Consulta de bancos soportados por el proveedor.
   - name: Consents
     description: Creación, estado y revocación de consentimientos.
   - name: Accounts
     description: Cuentas y balances asociados a un consentimiento.
   - name: Transactions
-    description: Transacciones de una cuenta.
+    description: Transacciones de cuentas bajo consentimiento.
   - name: Webhooks
-    description: Recepción de notificaciones del proveedor (eventos).
+    description: Recepción de notificaciones del proveedor (eventos asíncronos).
 
 paths:
+
+  /ob/connect:
+    post:
+      tags: [Connection]
+      summary: Inicia consentimiento con el proveedor seleccionado.
+      description: >
+        Devuelve la URL de redirección (hosted by provider) a la que el usuario debe acceder
+        para autorizar la conexión con su banco (ej.: Revolut vía TrueLayer).
+        Nota: en Revolut (vía TrueLayer) es recomendable realizar el pull de cuentas dentro
+        de los 5 minutos posteriores a la autorización.
+      operationId: connect
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+      requestBody:
+        $ref: '#/components/requestBodies/CreateConsentRequestBody'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreateConsent201'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
+        default: { $ref: '#/components/responses/500' }
+
+  /ob/callback:
+    get:
+      tags: [Connection]
+      summary: Procesa callback del proveedor tras autorización del usuario.
+      description: Intercambia el authorization_code por tokens y persiste el consentimiento.
+      operationId: callback
+      parameters:
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+        - name: state
+          in: query
+          required: true
+          description: Token opaco de correlación (round-trip).
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 256
+            pattern: '^[A-Za-z0-9._~\-]{8,256}$'
+        - name: code
+          in: query
+          required: true
+          description: Código temporal de autorización del proveedor.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 2048
+            pattern: '^[A-Za-z0-9._~\-]+$'
+      responses:
+        '200':
+          $ref: '#/components/responses/GetConsentResponse'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '404': { $ref: '#/components/responses/404' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
+        default: { $ref: '#/components/responses/500' }
 
   /institutions:
     parameters:
@@ -70,32 +143,6 @@ paths:
         '504': { $ref: '#/components/responses/504' }
         default: { $ref: '#/components/responses/500' }
 
-  /consents:
-    parameters:
-      - $ref: '#/components/parameters/Accept-Language-Header'
-      - $ref: '#/components/parameters/X-Request-Id-Header'
-    post:
-      tags: [Consents]
-      summary: Crea una sesión de consentimiento en el proveedor.
-      description: Devuelve la URL de redirección para que el usuario autorice el acceso.
-      operationId: createConsent
-      requestBody:
-        $ref: '#/components/requestBodies/CreateConsentRequestBody'
-      responses:
-        '201':
-          $ref: '#/components/responses/CreateConsent201'
-        '400': { $ref: '#/components/responses/400' }
-        '401': { $ref: '#/components/responses/401' }
-        '403': { $ref: '#/components/responses/403' }
-        '409': { $ref: '#/components/responses/409' }
-        '422': { $ref: '#/components/responses/422' }
-        '429': { $ref: '#/components/responses/429' }
-        '500': { $ref: '#/components/responses/500' }
-        '502': { $ref: '#/components/responses/502' }
-        '503': { $ref: '#/components/responses/503' }
-        '504': { $ref: '#/components/responses/504' }
-        default: { $ref: '#/components/responses/500' }
-
   /consents/{consentId}:
     parameters:
       - $ref: '#/components/parameters/Accept-Language-Header'
@@ -113,6 +160,7 @@ paths:
         '403': { $ref: '#/components/responses/403' }
         '404': { $ref: '#/components/responses/404' }
         '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
         '500': { $ref: '#/components/responses/500' }
         default: { $ref: '#/components/responses/500' }
     delete:
@@ -146,6 +194,7 @@ paths:
         '403': { $ref: '#/components/responses/403' }
         '404': { $ref: '#/components/responses/404' }
         '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
         '500': { $ref: '#/components/responses/500' }
         default: { $ref: '#/components/responses/500' }
 
@@ -217,10 +266,34 @@ paths:
         '504': { $ref: '#/components/responses/504' }
         default: { $ref: '#/components/responses/500' }
 
+  /refresh/{userId}:
+    post:
+      tags: [Consents]
+      summary: Fuerza refresco de datos bancarios (pull & reconcile).
+      operationId: triggerRefresh
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+        - name: userId
+          in: path
+          required: true
+          description: Identificador del usuario Revplan.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Refresh triggered (accepted for async processing).
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '404': { $ref: '#/components/responses/404' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+
   /webhooks/{provider}:
     post:
       tags: [Webhooks]
-      summary: Endpoint para recibir eventos del proveedor (institutions/consents/accounts/transactions).
+      summary: Recepción de eventos del proveedor (institutions/consents/accounts/transactions).
       description: >
         Firma opcional mediante cabecera X-Provider-Signature. Devuelve 202 si el evento se acepta para
         procesamiento asíncrono.
@@ -244,6 +317,7 @@ paths:
         '401': { $ref: '#/components/responses/401' }
         '403': { $ref: '#/components/responses/403' }
         '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
         '500': { $ref: '#/components/responses/500' }
         default: { $ref: '#/components/responses/500' }
 
@@ -257,7 +331,7 @@ components:
 
   headers:
     XRequestIdHeader:
-      description: Header used to define the identifier of an specific request.
+      description: Header used to define the identifier of a specific request.
       schema:
         type: string
         format: uuid
@@ -267,9 +341,10 @@ components:
       description: Gives an URL to be redirected (resource location).
       schema:
         type: string
-        minLength: 1
-        maxLength: 500
-        example: /openbanking-service/v0/consents/30000000-4000-4000-5000-600000000000
+        minLength: 9
+        maxLength: 1000
+        pattern: '^[a-zA-Z][a-zA-Z0-9+\-.]*://[^\s]+$'
+        example: http://localhost:8081/openbanking-service/v0/consents/30000000-4000-4000-5000-600000000000
     XProviderSignature:
       description: Firma del webhook del proveedor (HMAC/PKI según proveedor).
       schema:
@@ -288,7 +363,9 @@ components:
       schema:
         type: string
         default: es-ES
-        pattern: ^[a-z]{2}(-[A-Z]{2})?$
+        minLength: 2
+        maxLength: 35
+        pattern: '^[a-z]{2}(-[A-Z]{2})?$'
     X-Request-Id-Header:
       name: X-Request-ID
       in: header
@@ -321,15 +398,15 @@ components:
       required: true
       schema:
         type: string
-        enum: [tink, gocardless, revolut_business]
-        example: tink
+        enum: [truelayer, tink]
+        example: truelayer
     Provider-Path:
       name: provider
       in: path
       required: true
       schema:
         type: string
-        enum: [tink, gocardless, revolut_business]
+        enum: [truelayer, tink]
 
     Country:
       name: country
@@ -339,6 +416,8 @@ components:
       schema:
         type: string
         pattern: '^[A-Z]{2}$'
+        minLength: 2
+        maxLength: 2
         example: ES
 
     Search:
@@ -350,12 +429,13 @@ components:
         type: string
         minLength: 1
         maxLength: 100
+        pattern: '^[ \p{L}\p{N}_\-\.\(\)\/]{1,100}$'
         example: Revolut
 
     Offset:
       name: offset
       in: query
-      description: The offset for pagination.
+      description: Desplazamiento para paginación.
       required: false
       schema:
         type: integer
@@ -373,12 +453,12 @@ components:
         maximum: 100
         minimum: 1
         default: 20
-      description: Number of records returned per page.
+      description: Número de registros por página.
 
     Consent-Id:
       name: consentId
       in: path
-      description: Consent identifier (uuid).
+      description: Identificador del consentimiento (uuid).
       required: true
       schema:
         type: string
@@ -388,12 +468,13 @@ components:
     Account-Id-Path:
       name: accountId
       in: path
-      description: Account identifier (provider-specific).
+      description: Identificador de cuenta (específico de proveedor).
       required: true
       schema:
         type: string
         minLength: 2
         maxLength: 128
+        pattern: '^[A-Za-z0-9:_\-\./]{2,128}$'
         example: acc_123456
 
     Date-From:
@@ -430,11 +511,11 @@ components:
     Error:
       title: Error
       type: object
-      description: General structure to represent errors.
+      description: Estructura general de errores.
       properties:
         messages:
           type: array
-          maxItems: 5
+          maxItems: 10
           items:
             type: object
             properties:
@@ -444,12 +525,17 @@ components:
                 example: UNEXPECTED_ERROR
               message:
                 type: string
+                minLength: 1
+                maxLength: 200
                 example: Unexpected error
               type:
                 type: string
                 enum: [CRITICAL, FATAL, ERROR, WARNING, INFO]
+                example: ERROR
               description:
                 type: string
+                minLength: 1
+                maxLength: 500
                 example: The server cannot process the request.
             required: [code, message, type, description]
       required: [messages]
@@ -460,7 +546,7 @@ components:
         href:
           type: string
           maxLength: 10000
-          pattern: ^[a-zA-Z0-9_\-\.:/\?&=%]*$
+          pattern: '^[a-zA-Z0-9_\-\.:/\?&=%#]*$'
           minLength: 1
           example: http://localhost:8081/openbanking-service/v0/institutions?limit=10&offset=0
 
@@ -496,6 +582,8 @@ components:
           type: number
           format: double
           multipleOf: 0.01
+          minimum: -1000000000
+          maximum: 1000000000
           example: 1234.56
         currency: { $ref: '#/components/schemas/Currency' }
       required: [amount, currency]
@@ -503,11 +591,31 @@ components:
     Institution:
       type: object
       properties:
-        id: { type: string, example: 'REVOLUT_REVOLT21' }
-        name: { type: string, example: 'Revolut' }
-        bic: { type: string, example: 'REVOLT21' }
-        country: { type: string, pattern: '^[A-Z]{2}$', example: 'LT' }
-        logoUrl: { type: string, nullable: true }
+        id:
+          type: string
+          minLength: 2
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+          example: 'REVOLUT_REVOLT21'
+        name:
+          type: string
+          minLength: 2
+          maxLength: 128
+          example: 'Revolut'
+        bic:
+          type: string
+          minLength: 6
+          maxLength: 11
+          pattern: '^[A-Z0-9]{6,11}$'
+          example: 'REVOLT21'
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          example: 'LT'
+        logoUrl:
+          type: string
+          nullable: true
+          maxLength: 1024
       required: [id, name, country]
 
     InstitutionsListData:
@@ -525,17 +633,20 @@ components:
       properties:
         provider:
           type: string
-          enum: [tink, gocardless, revolut_business]
+          enum: [truelayer, tink]
         redirectUri:
           type: string
-          minLength: 4
+          description: URI de retorno. Debe incluir esquema.
+          minLength: 9
           maxLength: 500
+          pattern: '^[a-zA-Z][a-zA-Z0-9+\-.]*://[^\s]+$'
           example: 'revplan://ob/callback'
         institutionId:
           type: string
           description: Identificador de la institución del agregador (si aplica).
           minLength: 2
           maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
           example: 'REVOLUT_REVOLT21'
         scope:
           type: array
@@ -550,6 +661,7 @@ components:
           description: Token opaco de correlación (round-trip).
           minLength: 8
           maxLength: 256
+          pattern: '^[A-Za-z0-9._~\-]{8,256}$'
       required: [provider, redirectUri, scope]
 
     ConsentStatus:
@@ -561,13 +673,24 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        provider: { type: string, enum: [tink, gocardless, revolut_business] }
-        institutionId: { type: string, nullable: true, example: 'REVOLUT_REVOLT21' }
+        provider: { type: string, enum: [truelayer, tink] }
+        institutionId:
+          type: string
+          nullable: true
+          minLength: 2
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+          example: 'REVOLUT_REVOLT21'
         status: { $ref: '#/components/schemas/ConsentStatus' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time, nullable: true }
-        redirectUrl: { type: string, nullable: true }
+        redirectUrl:
+          type: string
+          nullable: true
+          minLength: 9
+          maxLength: 1000
+          pattern: '^[a-zA-Z][a-zA-Z0-9+\-.]*://[^\s]+$'
       required: [id, provider, status, createdAt, updatedAt]
 
     ConsentDetailData:
@@ -579,12 +702,33 @@ components:
     Account:
       type: object
       properties:
-        id: { type: string, example: 'acc_123456' }
-        name: { type: string, example: 'Revolut Main' }
-        ibanMasked: { type: string, example: 'LT** **** **** 1234' }
+        id:
+          type: string
+          minLength: 2
+          maxLength: 128
+          pattern: '^[A-Za-z0-9:_\-\./]{2,128}$'
+          example: 'acc_123456'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: 'Revolut Main'
+        ibanMasked:
+          type: string
+          minLength: 6
+          maxLength: 40
+          example: 'LT** **** **** 1234'
         currency: { $ref: '#/components/schemas/Currency' }
-        type: { type: string, example: 'CURRENT' }
-        institution: { type: string, example: 'REVOLUT' }
+        type:
+          type: string
+          minLength: 3
+          maxLength: 32
+          example: 'CURRENT'
+        institution:
+          type: string
+          minLength: 2
+          maxLength: 64
+          example: 'REVOLUT'
       required: [id, currency]
 
     AccountsListData:
@@ -612,18 +756,38 @@ components:
     Transaction:
       type: object
       properties:
-        id: { type: string, example: 'tx_98765' }
+        id:
+          type: string
+          minLength: 2
+          maxLength: 128
+          pattern: '^[A-Za-z0-9:_\-\./]{2,128}$'
+          example: 'tx_98765'
         bookingDate: { type: string, format: date-time }
         valueDate: { type: string, format: date-time, nullable: true }
         amount:
           type: number
           format: double
           multipleOf: 0.01
+          minimum: -1000000000
+          maximum: 1000000000
           example: -12.35
         currency: { $ref: '#/components/schemas/Currency' }
-        description: { type: string, example: 'Supermercado' }
-        category: { type: string, example: 'groceries' }
-        merchant: { type: string, nullable: true, example: 'Mercadona' }
+        description:
+          type: string
+          minLength: 1
+          maxLength: 280
+          example: 'Supermercado'
+        category:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: 'groceries'
+        merchant:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 128
+          example: 'Mercadona'
         status:
           type: string
           enum: [booked, pending]
@@ -724,7 +888,7 @@ components:
             $ref: '#/components/schemas/TransactionsPageData'
 
     '204':
-      description: No contents
+      description: No content.
 
     '400':
       description: Bad Request.
@@ -733,7 +897,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             invalid-params:
-              $ref: '#/components/examples/example-error400InvalidParameters'
+              value:
+                messages:
+                  - code: BAD_REQUEST
+                    message: Invalid Parameter
+                    type: ERROR
+                    description: A parameter has not been provided correctly.
 
     '401':
       description: Unauthorized.
@@ -742,7 +911,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             unauthorized:
-              $ref: '#/components/examples/example-error401'
+              value:
+                messages:
+                  - code: UNAUTHORIZED
+                    message: Unauthorized
+                    type: ERROR
+                    description: Failure to present credentials correctly.
 
     '403':
       description: Forbidden.
@@ -751,7 +925,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             forbidden:
-              $ref: '#/components/examples/example-error403'
+              value:
+                messages:
+                  - code: FORBIDDEN
+                    message: Forbidden
+                    type: FATAL
+                    description: You do not have permissions to operate with this invocation.
 
     '404':
       description: Not Found.
@@ -760,7 +939,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             not-found:
-              $ref: '#/components/examples/example-error404'
+              value:
+                messages:
+                  - code: NOT_FOUND
+                    type: FATAL
+                    message: Resource Not Found
+                    description: Resource not found.
 
     '409':
       description: Conflict.
@@ -769,7 +953,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             conflict:
-              $ref: '#/components/examples/example-error409'
+              value:
+                messages:
+                  - code: CONFLICT
+                    message: Conflict
+                    type: ERROR
+                    description: Resource state conflict.
 
     '422':
       description: Unprocessable Entity.
@@ -778,7 +967,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             unprocessable:
-              $ref: '#/components/examples/example-error422'
+              value:
+                messages:
+                  - code: UNPROCESSABLE_ENTITY
+                    message: Unprocessable Content
+                    type: ERROR
+                    description: Entity unprocessable by the server.
 
     '429':
       description: Too Many Requests.
@@ -801,7 +995,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             err500Example:
-              $ref: '#/components/examples/example-error500'
+              value:
+                messages:
+                  - code: INTERNAL_SERVER_ERROR
+                    message: Internal server error
+                    type: FATAL
+                    description: Unexpected error from the server, it has no way to respond to the invocation.
 
     '502':
       description: Bad Gateway.
@@ -844,57 +1043,6 @@ components:
                     message: Upstream timeout
                     type: ERROR
                     description: Timeout waiting for provider response.
-
-  examples:
-    example-error400InvalidParameters:
-      value:
-        messages:
-          - code: BAD_REQUEST
-            message: Invalid Parameter
-            type: ERROR
-            description: A parameter has not been provided correctly.
-    example-error401:
-      value:
-        messages:
-          - code: UNAUTHORIZED
-            message: Unauthorized
-            type: ERROR
-            description: Failure to present credentials correctly.
-    example-error403:
-      value:
-        messages:
-          - code: FORBIDDEN
-            message: Forbidden
-            type: FATAL
-            description: You do not have permissions to operate with this invocation.
-    example-error404:
-      value:
-        messages:
-          - code: NOT_FOUND
-            type: FATAL
-            message: Resource Not Found
-            description: Resource not found.
-    example-error409:
-      value:
-        messages:
-          - code: CONFLICT
-            message: Conflict
-            type: ERROR
-            description: Resource state conflict.
-    example-error422:
-      value:
-        messages:
-          - code: UNPROCESSABLE_ENTITY
-            message: Unprocessable Content
-            type: ERROR
-            description: Entity unprocessable by the server.
-    example-error500:
-      value:
-        messages:
-          - code: INTERNAL_SERVER_ERROR
-            message: Internal server error
-            type: FATAL
-            description: Unexpected error from the server, it has no way to respond to the invocation.
 
 security:
   - bearerAuth: []
