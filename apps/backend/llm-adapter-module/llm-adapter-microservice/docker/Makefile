@@ -1,11 +1,9 @@
 # =========
 # Variables
 # =========
-PROJECT           ?= plan-engine
+PROJECT           ?= llm-adapter
 COMPOSE_FILE      ?= docker-compose.yml
-APP_SERVICE       ?= plan-engine-ms
-DB_SERVICE        ?= postgres
-PGADMIN_SERVICE   ?= pgadmin
+APP_SERVICE       ?= llm-adapter-ms
 STACK_NETWORK_KEY ?= revplan-network
 
 # Detecta el comando compose (v2 o v1)
@@ -14,8 +12,6 @@ COMPOSE := $(shell (docker compose version >/dev/null 2>&1 && echo "docker compo
 
 # Nombre de la red a usar (sin prefijo del proyecto)
 COMPOSE_NET := $(STACK_NETWORK_KEY)
-VOL_DB_SCOPED  := $(PROJECT)_plan-pg-data
-VOL_PGA_SCOPED := $(PROJECT)_plan-pgadmin-data
 
 # =========
 # Configuración global
@@ -32,14 +28,12 @@ help:
 	@echo "  make build        - Build (compose) del stack"
 	@echo "  make build-nc     - Build sin caché"
 	@echo "  make down         - Para y elimina el stack (sin borrar volúmenes)"
-	@echo "  make nuke         - Para el stack y borra volúmenes + red"
+	@echo "  make nuke         - Para el stack y borra la red"
 	@echo "  make ps           - Estado de los servicios"
 	@echo "  make logs         - Logs de todos los servicios (follow)"
 	@echo "  make logs-app     - Logs del micro ($(APP_SERVICE))"
 	@echo "  make restart      - Reinicia sólo el micro"
 	@echo "  make sh-app       - Shell dentro del micro"
-	@echo "  make sh-db        - Shell dentro de Postgres"
-	@echo "  make psql         - psql a Postgres (revplan)"
 	@echo "  make check        - Muestra versiones de docker y compose detectadas"
 
 # =========
@@ -55,7 +49,7 @@ check:
 
 .PHONY: network
 network:
-	@# Crea la red externa si no existe
+	@# Crea la red externa compartida si no existe
 	@if ! docker network inspect $(COMPOSE_NET) >/dev/null 2>&1; then \
 		echo ">> Creando red $(COMPOSE_NET)"; \
 		docker network create $(COMPOSE_NET); \
@@ -69,7 +63,7 @@ network:
 .PHONY: up
 up: remove-wrong-network network
 	$(COMPOSE) -p $(PROJECT) -f $(COMPOSE_FILE) up -d --build
-	@echo ">> Stack levantado. Swagger en http://localhost:8080/swagger-ui.html (cuando el micro arranque)"
+	@echo ">> Stack levantado. Swagger en http://localhost:8083/swagger-ui.html (cuando el micro arranque)"
 
 .PHONY: build
 build:
@@ -92,7 +86,7 @@ remove-wrong-network:
 nuke:
 	$(COMPOSE) -p $(PROJECT) -f $(COMPOSE_FILE) down -v
 	-@docker network rm $(COMPOSE_NET) 2>/dev/null || true
-	@echo ">> Limpieza completa (stack, volúmenes y red del proyecto)"
+	@echo ">> Limpieza completa (stack y red del proyecto)"
 
 # =========
 # Observabilidad
@@ -114,16 +108,8 @@ restart:
 	$(COMPOSE) -p $(PROJECT) -f $(COMPOSE_FILE) restart $(APP_SERVICE)
 
 # =========
-# Shells útiles
+# Shell útil
 # =========
 .PHONY: sh-app
 sh-app:
 	docker exec -it $(APP_SERVICE) sh
-
-.PHONY: sh-db
-sh-db:
-	docker exec -it $(DB_SERVICE) bash
-
-.PHONY: psql
-psql:
-	docker exec -it $(DB_SERVICE) psql -U revplan -d revplan

@@ -1,0 +1,21 @@
+services:
+  llm-adapter-ms:
+    container_name: llm-adapter-ms
+    image: llm-adapter-ms:latest
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+    ports:
+      - "8083:8083"
+    env_file:
+      - .env
+    networks:
+      - revplan-network
+
+networks:
+  revplan-network:
+    external: true
+    name: revplan-network

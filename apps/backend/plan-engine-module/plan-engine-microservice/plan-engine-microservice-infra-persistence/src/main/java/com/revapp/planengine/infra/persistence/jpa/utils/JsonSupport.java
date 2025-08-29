@@ -1,10 +1,3 @@
-/*******************************************************************************
- *
- * Autor: Andres Garcia
- *
- * © Axpe Consulting S.L. 2025. Todos los derechos reservados.
- *
- ******************************************************************************/
 package com.revapp.planengine.infra.persistence.jpa.utils;
 
 import com.fasterxml.jackson.core.type.TypeReference;

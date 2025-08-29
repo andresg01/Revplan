@@ -22,9 +22,8 @@ Recibirás un objeto con:
    - Parte de template.defaults.
    - Ajusta savingPct y emergencyMonths según riskScore, stabilityIndex, incomeNet, goals, y hábitos/feedback.
    - Cumple SIEMPRE template.constraints (clamp si hace falta).
-   - envelopes es un array de {category, percentage} con percentage ∈ [0,1].
-   - Si faltan categorías, usa exactamente: "Gastos Fijos", "Gastos Variables", "Ahorro e Inversión".
-   - Si sum(percentage) ≠ 1.0 (tolerancia ±0.01), normaliza manteniendo proporciones hasta ≈ 1.0.
+   - envelopes es un objeto JSON (mapa) con las claves "fixed", "variable", y "goals".
+   - Si la suma de los porcentajes ≠ 1.0 (tolerancia ±0.01), normaliza manteniendo proporciones hasta ≈ 1.0.
 4) kpis:
    - savingRate = adjustments.savingPct
    - runwayMonths ≥ 0 (si no hay base para estimar, usa 0.0)
@@ -42,4 +41,4 @@ Recibirás un objeto con:
 - STRICT SCHEMA: No añadas campos fuera del schema.
 
 ### EJEMPLO JSON (compacto, orientativo; genera según los datos reales)
-{"rationale":"Riesgo moderado; priorizamos liquidez y constancia.","alerts":["Automatiza aportes mensuales","Recorta ocio si se dispara"],"adjustments":{"savingPct":0.28,"emergencyMonths":4,"envelopes":[{"category":"Gastos Fijos","percentage":0.50},{"category":"Gastos Variables","percentage":0.30},{"category":"Ahorro e Inversión","percentage":0.20}]},"kpis":{"savingRate":0.28,"runwayMonths":4.0,"budgetCompliance":1.0}}
+{"rationale":"Riesgo moderado; priorizamos liquidez y constancia.","alerts":["Automatiza aportes mensuales","Recorta ocio si se dispara"],"adjustments":{"savingPct":0.28,"emergencyMonths":4,"envelopes":{"fixed":0.50,"variable":0.30,"goals":0.20}},"kpis":{"savingRate":0.28,"runwayMonths":4.0,"budgetCompliance":1.0}}

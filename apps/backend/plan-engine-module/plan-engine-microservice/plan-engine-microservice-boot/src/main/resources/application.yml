@@ -52,18 +52,20 @@ app:
   api-rest:
     base-path: /artifact-app/v1
 
-openai:
-  apiKey: ${OPENAI_API_KEY:}
-  baseUrl: ${OPENAI_BASE_URL:https://api.openai.com/v1}
-  timeoutMs: ${OPENAI_TIMEOUT_MS:15000}
-  maxInMemoryBytes: ${OPENAI_MAX_IN_MEMORY_BYTES:2097152}
-
+llm:
+  adapter:
+    baseUrl: ${LLM_ADAPTER_BASE_URL:http://llm-adapter-ms:8083}
+    timeoutMs: ${LLM_ADAPTER_TIMEOUT_MS:90000}
+    maxInMemoryBytes: ${LLM_ADAPTER_MAX_IN_MEMORY_BYTES:2097152}
+    username: ${LLM_ADAPTER_USERNAME:admin}
+    password: ${LLM_ADAPTER_PASSWORD:test}
+    path:
+      generate: /plans/generate
+      stream: /plans/generate/stream
+    acceptLanguage: ${LLM_ADAPTER_ACCEPT_LANGUAGE:es-ES}
 ai:
   defaults:
     provider: ${AI_DEFAULTS_PROVIDER:openai}
     model: ${AI_DEFAULTS_MODEL:gpt-5-mini}
     temperature: ${AI_DEFAULTS_TEMPERATURE:0.2}
     promptVersion: ${AI_DEFAULTS_PROMPT_VERSION:2025-08-19}
-  systemPromptPath: classpath:prompts/financial-planner-system.txt
-
-

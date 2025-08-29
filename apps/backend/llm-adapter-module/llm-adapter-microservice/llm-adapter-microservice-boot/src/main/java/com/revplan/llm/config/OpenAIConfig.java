@@ -1,21 +1,17 @@
-package com.revapp.planengine.config;
+package com.revplan.llm.config;
 
 import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.handler.timeout.WriteTimeoutHandler;
-import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.*;
-import org.springframework.http.HttpHeaders;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.reactive.function.client.*;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -27,7 +23,7 @@ public class OpenAIConfig {
     @Bean("openAiWebClient")
     WebClient openAiWebClient(OpenAIProps props) {
         int readWriteMs = props.getTimeoutMs();
-        int connectMs   = Math.min(10_000, readWriteMs); // 10s o menos si el total es menor
+        int connectMs   = Math.min(10_000, readWriteMs);
 
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectMs)
@@ -47,30 +43,10 @@ public class OpenAIConfig {
                     h.setBearerAuth(props.getApiKey());
                     h.setContentType(MediaType.APPLICATION_JSON);
                     h.setAccept(List.of(MediaType.APPLICATION_JSON));
+                    // Necesario para Structured Outputs (Responses API)
                     h.add("OpenAI-Beta", "responses-structured-outputs=v1");
                 })
                 .exchangeStrategies(strategies)
                 .build();
     }
-}
-
-@Data
-@Validated
-@ConfigurationProperties(prefix = "openai")
-class OpenAIProps {
-    /** Se inyecta desde env var OPENAI_API_KEY o application.yml */
-    @NotBlank
-    private String apiKey;
-
-    /** Se puede sobreescribir con OPENAI_BASE_URL */
-    @NotBlank
-    private String baseUrl = "https://api.openai.com/v1";
-
-    /** Timeout total de lectura/respuesta (OPENAI_TIMEOUT_MS) */
-    @Min(1000)
-    private Integer timeoutMs = 90_000; // 90s por defecto
-
-    /** Límite de memoria para deserializar respuestas (OPENAI_MAX_IN_MEMORY_BYTES) */
-    @Min(1024)
-    private Integer maxInMemoryBytes = 2 * 1024 * 1024; // 2MB
 }

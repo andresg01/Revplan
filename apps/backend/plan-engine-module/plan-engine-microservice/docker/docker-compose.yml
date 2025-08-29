@@ -27,7 +27,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - plan-engine-network
+      - revplan-network
 
   postgres:
     image: postgres:16
@@ -48,7 +48,7 @@ services:
       retries: 6
       start_period: 20s
     networks:
-      - plan-engine-network
+      - revplan-network
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -67,12 +67,12 @@ services:
     volumes:
       - plan-pgadmin-data:/var/lib/pgadmin
     networks:
-      - plan-engine-network
+      - revplan-network
 
 networks:
-  plan-engine-network:
+  revplan-network:
     external: true
-    name: plan-engine-network
+    name: revplan-network
 
 volumes:
   plan-pg-data:

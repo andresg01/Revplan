@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- por defecto se escanea cada 30¨ -->
+<Configuration status="warn" monitorInterval="30">
+	<Properties>
+		<Property name="LOG_PATTERN">%style{%d{yyyy-MM-dd HH:mm:ss.SSS}}{yellow} %highlight{%-5level}{FATAL=bg_red, ERROR=red, WARN=yellow, INFO=green} [%thread] %logger{35} - %msg%n</Property>
+		<Property name="APP_LOG_ROOT">logs</Property>
+	</Properties>
+	<Appenders>
+		<Console name="CONSOLE" target="SYSTEM_OUT" follow="false">
+			<PatternLayout>
+				<disableAnsi>false</disableAnsi>
+				<Pattern>${LOG_PATTERN}</Pattern> 
+			</PatternLayout>
+		</Console>
+
+		<RollingFile name="FILE"
+            fileName="${APP_LOG_ROOT}/${artifactId}.log"
+            filePattern="${APP_LOG_ROOT}/${artifactId}-%d{yyyy-MM-dd}-%i.log">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+			<Filters>
+				<ThresholdFilter level="error"  onMatch="DENY"   onMismatch="NEUTRAL"/>
+			</Filters>
+			<Policies>
+				<SizeBasedTriggeringPolicy size="19500KB" />
+			</Policies>
+			<DefaultRolloverStrategy max="10" />
+		</RollingFile>
+		
+		<RollingFile name="FILE_ERROR"
+			fileName="${APP_LOG_ROOT}/assignments-error.log"
+			filePattern="${APP_LOG_ROOT}/assignments-error-%d{yyyy-MM-dd}-%i.log">
+			<PatternLayout pattern="${LOG_PATTERN}" />
+			<Filters>
+				<ThresholdFilter level="error"  onMatch="ACCEPT"   onMismatch="NEUTRAL"/>
+				<ThresholdFilter level="trace"  onMatch="DENY"   onMismatch="NEUTRAL"/>
+			</Filters>
+			<Policies>
+				<SizeBasedTriggeringPolicy size="19500KB" />
+			</Policies>
+			<DefaultRolloverStrategy max="10" />
+		</RollingFile>
+	</Appenders>
+
+	<Loggers>
+		<!-- Avoids excessive noise casued by rutinary INFO logs by third parties -->
+		<Logger name="javax.activation"			level="warn" />
+		<Logger name="javax.management"			level="warn" />
+		<Logger name="org.apache.tomcat"			level="warn" />
+		<Logger name="org.apache.catalina"			level="warn" />
+		<Logger name="org.apache.commons.beanutils.converters"				level="warn" />
+		<Logger name="org.springframework"			level="warn" />
+		<Logger name="org.aspectj.weaver"			level="warn" />
+		<Logger name="org.hibernate"				level="warn" />
+		<Logger name="org.springframework"			level="warn" />
+		<Logger name="com.zaxxer.hikari.pool.HikariPool"				level="warn" />
+		<Logger name="sun.rmi"                        level="warn" />
+        <Logger name="org.apache.coyote.http11.Http11Processor" level="warn" />
+        
+		<Logger name="com.axpe" additivity="false" 	level="debug" >
+			<AppenderRef ref="FILE" />
+			<AppenderRef ref="FILE_ERROR" />
+			<AppenderRef ref="CONSOLE" />
+		</Logger>
+
+		<Root level="debug">
+			<AppenderRef ref="FILE" />
+			<AppenderRef ref="FILE_ERROR" />
+			<AppenderRef ref="CONSOLE" />
+		</Root>
+	</Loggers>
+</Configuration>

@@ -1,0 +1,1488 @@
+openapi: 3.0.3
+info:
+  title: Revplan LLM Adapter Service API
+  description: >
+    Microservicio interno que orquesta llamadas al proveedor LLM (p. ej. OpenAI/Azure OpenAI)
+    para generar planes en formato JSON (validación por JSON Schema), gestionar plantillas de prompt,
+    consultar precios/catálogo de modelos, y exponer utilidades de validación y streaming SSE.
+  contact:
+    name: Revplan Team
+    email: andresgb01@icloud.com
+  version: '0.0.3'
+
+servers:
+  - url: '{protocol}://{host}:{port}/{basePath}/{majorVersion}'
+    variables:
+      protocol:
+        description: Protocol.
+        enum: ['http','https']
+        default: 'http'
+      host:
+        description: Host.
+        enum: ['localhost','llm-adapter.revplan.local']
+        default: 'localhost'
+      port:
+        description: Port.
+        default: '8083'
+      basePath:
+        description: BasePath.
+        default: llm-adapter-service
+      majorVersion:
+        description: MajorVersion.
+        default: v0
+
+tags:
+  - name: Models
+    description: Catálogo de modelos LLM disponibles y sus capacidades.
+  - name: Prompts
+    description: CRUD de plantillas de prompt con variables tipadas.
+  - name: Schemas
+    description: Esquemas JSON y utilidades de validación.
+  - name: Generate
+    description: Generación de salida (JSON) con validación de schema y streaming opcional.
+  - name: Health
+    description: Salud, límites y diagnóstico de conectividad con el proveedor.
+  - name: Billing
+    description: Catálogo de precios por modelo/servicio (tokens, herramientas, imágenes, etc.).
+
+paths:
+
+  /models:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    get:
+      tags: [Models]
+      summary: Lista modelos LLM disponibles (proveedor, límites y estado).
+      description: Devuelve los modelos configurados con su ventana de contexto, modalidades y estado.
+      operationId: getModels
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    minItems: 0
+                    items: { $ref: '#/components/schemas/Model' }
+                required: [data]
+              examples:
+                ok:
+                  value:
+                    data:
+                      - id: gpt-4o-mini
+                        provider: openai
+                        contextWindow: 128000
+                        maxOutputTokens: 16384
+                        modalities: [text, structured_json]
+                        status: active
+                      - id: gpt-4o
+                        provider: openai
+                        contextWindow: 128000
+                        maxOutputTokens: 32768
+                        modalities: [text, structured_json]
+                        status: active
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /prompts/templates:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Prompt-Name-Search'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [Prompts]
+      summary: Lista plantillas de prompt (con filtros y paginación).
+      description: Devuelve el listado de plantillas con posibilidad de filtrar por nombre.
+      operationId: getPromptTemplates
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromptTemplateListData' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      - id: PLAN_JSON_V1
+                        name: Plan JSON v1
+                        systemPrompt: 'Eres un planificador financiero. Devuelve SOLO JSON al schema.'
+                        userTemplate: |
+                          PERFIL: {{profile}}
+                          CUENTAS: {{accounts}}
+                          GASTO_90D: {{spend}}
+                          DEUDAS: {{debts}}
+                          CATALOGO_PLANTILLAS: {{templates}}
+                          INSTRUCCIONES: Devuelve SOLO JSON exacto al schema.
+                        variables:
+                          - name: profile
+                            type: object
+                            required: true
+                            description: Perfil financiero agregado
+                        protected: true
+                    pagination:
+                      offset: 0
+                      limit: 20
+                      totalElements: 1
+                      totalPages: 1
+                      pageNumber: 0
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+    post:
+      tags: [Prompts]
+      summary: Crea una plantilla de prompt.
+      description: Alta de una nueva plantilla con variables tipadas y prompts.
+      operationId: createPromptTemplate
+      requestBody:
+        $ref: '#/components/requestBodies/PromptTemplateRequestBody'
+      responses:
+        '201':
+          description: Created.
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromptTemplateData' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /prompts/templates/{templateId}:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+      - $ref: '#/components/parameters/Template-Id'
+    get:
+      tags: [Prompts]
+      summary: Obtiene una plantilla por id.
+      description: Devuelve el detalle de la plantilla indicada por id.
+      operationId: getPromptTemplateById
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromptTemplateData' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '404': { $ref: '#/components/responses/404' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+    put:
+      tags: [Prompts]
+      summary: Actualiza una plantilla por id.
+      description: Reemplaza por completo la plantilla indicada.
+      operationId: updatePromptTemplate
+      requestBody:
+        $ref: '#/components/requestBodies/PromptTemplateRequestBody'
+      responses:
+        '204': { $ref: '#/components/responses/204' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '404': { $ref: '#/components/responses/404' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+    delete:
+      tags: [Prompts]
+      summary: Elimina una plantilla (si no está protegida/en uso).
+      description: Borra la plantilla si no está marcada como protegida o en uso.
+      operationId: deletePromptTemplate
+      responses:
+        '204': { $ref: '#/components/responses/204' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '404': { $ref: '#/components/responses/404' }
+        '409': { $ref: '#/components/responses/409' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /schemas/plan:
+    get:
+      tags: [Schemas]
+      summary: Devuelve el JSON Schema oficial de salida del plan (LLM).
+      description: JSON Schema empleado para validar la salida del LLM.
+      operationId: getPlanOutputSchema
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanLLMOutputSchemaDoc' }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /schemas/validate:
+    post:
+      tags: [Schemas]
+      summary: Valida un JSON cualquiera contra un JSON Schema.
+      description: Si no se envía `schema`, valida contra el schema oficial del plan.
+      operationId: validateJsonAgainstSchema
+      requestBody:
+        $ref: '#/components/requestBodies/JsonValidateRequestBody'
+      responses:
+        '200':
+          description: Resultado de la validación.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string, minLength: 1, example: '$.adjustments.saving_pct' }
+                        message: { type: string, minLength: 1, example: 'must be <= 1' }
+                required: [valid]
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /plans/generate:
+    post:
+      tags: [Generate]
+      summary: Genera JSON de plan usando plantilla de prompt y JSON Schema.
+      description: >
+        Llama al proveedor LLM con `response_format: json_schema`, valida la salida contra el
+        schema del plan y devuelve el JSON válido.
+      operationId: generatePlanJson
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+      requestBody:
+        $ref: '#/components/requestBodies/PlanGenerateLLMRequestBody'
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+            X-Provider-Request-ID:
+              description: Identificador de la petición en el proveedor LLM.
+              schema:
+                type: string
+                minLength: 1
+                maxLength: 200
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanLLMOutputData' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      template_id: EQUILIBRADO_50_30_20
+                      adjustments:
+                        saving_pct: 0.27
+                        emergency_months: 7
+                        envelopes:
+                          fijos: 0.45
+                          variables: 0.28
+                          objetivos: 0.27
+                      rationale: 'Priorizamos colchón y ligera subida de ahorro.'
+                      alerts:
+                        - 'Ajusta ocio si superas 10% del límite'
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /plans/generate/stream:
+    post:
+      tags: [Generate]
+      summary: Genera en streaming (SSE) para observabilidad/tokens en tiempo real.
+      description: Devuelve un stream SSE con fragmentos (chunks) y evento final con metadatos.
+      operationId: generatePlanJsonStream
+      requestBody:
+        $ref: '#/components/requestBodies/PlanGenerateLLMRequestBody'
+      responses:
+        '200':
+          description: Event stream abierto.
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                enum: ['text/event-stream']
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                sample:
+                  summary: Flujo SSE de ejemplo
+                  value: |
+                    event: chunk
+                    data: {"delta":"{\"template_id\":\"EQU..."}
+                    event: chunk
+                    data: {"delta":"..."}
+                    event: finish
+                    data: {"providerRequestId":"req_abc123","durationMs":842}
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '502': { $ref: '#/components/responses/502' }
+        '504': { $ref: '#/components/responses/504' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /health/llm:
+    get:
+      tags: [Health]
+      summary: Comprobación de conectividad con el proveedor LLM.
+      description: Realiza una verificación simple de latencia y reachability del proveedor LLM.
+      operationId: healthLLM
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { type: string, minLength: 2, example: openai }
+                  reachable: { type: boolean, example: true }
+                  modelLatencyMs: { type: integer, minimum: 0, example: 123 }
+                  timestamp: { type: string, format: date-time }
+                required: [provider, reachable, timestamp]
+        '500': { $ref: '#/components/responses/500' }
+
+  /limits:
+    get:
+      tags: [Health]
+      summary: Límite de uso y ventana de rate limit conocida.
+      description: Devuelve límites estimados y cabeceras de rate limit.
+      operationId: getLimits
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-RateLimit-Limit:
+              description: Límite de peticiones por minuto conocido.
+              schema: { type: integer, minimum: 1, example: 3500 }
+            X-RateLimit-Remaining:
+              description: Peticiones restantes en la ventana.
+              schema: { type: integer, minimum: 0, example: 3492 }
+            X-RateLimit-Reset:
+              description: Epoch seconds para reset.
+              schema: { type: integer, minimum: 0, example: 1723948800 }
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  limitPerMinute: { type: integer, minimum: 1 }
+                  estimatedUsageMinute: { type: integer, minimum: 0 }
+                  burstAllowed: { type: integer, minimum: 0 }
+                required: [limitPerMinute]
+              examples:
+                ok:
+                  value:
+                    limitPerMinute: 3500
+                    estimatedUsageMinute: 8
+                    burstAllowed: 50
+        '500': { $ref: '#/components/responses/500' }
+
+  /billing/prices:
+    get:
+      tags: [Billing]
+      summary: Catálogo de precios del proveedor por modelo/servicio.
+      description: >
+        Devuelve un snapshot del catálogo de precios público del proveedor seleccionado.
+        Los importes se devuelven en la moneda indicada (por defecto USD).
+      operationId: getBillingPrices
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+        - name: provider
+          in: query
+          required: false
+          description: Proveedor deseado.
+          schema:
+            type: string
+            enum: [openai, azure_openai]
+            default: openai
+        - name: tier
+          in: query
+          required: false
+          description: Tarifa de procesamiento.
+          schema:
+            type: string
+            enum: [standard, batch, flex, priority]
+            default: standard
+        - name: currency
+          in: query
+          required: false
+          description: Moneda de salida en código ISO 4217 (solo `USD` soportado inicialmente).
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}$'
+            minLength: 3
+            maxLength: 3
+            default: USD
+        - name: includeLegacy
+          in: query
+          required: false
+          description: Incluir modelos legacy en la respuesta.
+          schema:
+            type: boolean
+            default: true
+        - name: effectiveDate
+          in: query
+          required: false
+          description: Fecha del snapshot deseado (si se omite, el más reciente).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PriceCatalog' }
+                required: [data]
+              examples:
+                openai-standard:
+                  summary: Catálogo OpenAI - tier standard (USD)
+                  value:
+                    data:
+                      provider: openai
+                      tier: standard
+                      currency: USD
+                      effectiveAt: '2025-08-21T00:00:00Z'
+                      categories:
+                        textTokens:
+                          unit: PER_1M_TOKENS
+                          items:
+                            - modelId: gpt-5
+                              price: { input: 1.25, cachedInput: 0.125, output: 10.00 }
+                            - modelId: gpt-5-mini
+                              price: { input: 0.25, cachedInput: 0.025, output: 2.00 }
+                            - modelId: gpt-5-nano
+                              price: { input: 0.05, cachedInput: 0.005, output: 0.40 }
+                            - modelId: gpt-4.1
+                              price: { input: 2.00, cachedInput: 0.50, output: 8.00 }
+                            - modelId: gpt-4.1-mini
+                              price: { input: 0.40, cachedInput: 0.10, output: 1.60 }
+                            - modelId: gpt-4.1-nano
+                              price: { input: 0.10, cachedInput: 0.025, output: 0.40 }
+                            - modelId: gpt-4o
+                              price: { input: 2.50, cachedInput: 1.25, output: 10.00 }
+                            - modelId: gpt-4o-2024-05-13
+                              price: { input: 5.00, output: 15.00 }
+                            - modelId: gpt-4o-audio-preview
+                              price: { input: 2.50, output: 10.00 }
+                            - modelId: gpt-4o-realtime-preview
+                              price: { input: 5.00, cachedInput: 2.50, output: 20.00 }
+                            - modelId: gpt-4o-mini
+                              price: { input: 0.15, cachedInput: 0.075, output: 0.60 }
+                            - modelId: gpt-4o-mini-audio-preview
+                              price: { input: 0.15, output: 0.60 }
+                            - modelId: gpt-4o-mini-realtime-preview
+                              price: { input: 0.60, cachedInput: 0.30, output: 2.40 }
+                            - modelId: o1
+                              price: { input: 15.00, cachedInput: 7.50, output: 60.00 }
+                            - modelId: o1-pro
+                              price: { input: 150.00, output: 600.00 }
+                            - modelId: o3
+                              price: { input: 2.00, cachedInput: 0.50, output: 8.00 }
+                            - modelId: o3-pro
+                              price: { input: 20.00, output: 80.00 }
+                            - modelId: o3-deep-research
+                              price: { input: 10.00, cachedInput: 2.50, output: 40.00 }
+                            - modelId: o4-mini
+                              price: { input: 1.10, cachedInput: 0.275, output: 4.40 }
+                            - modelId: o4-mini-deep-research
+                              price: { input: 2.00, cachedInput: 0.50, output: 8.00 }
+                        imageTokens:
+                          unit: PER_1M_TOKENS
+                          items:
+                            - modelId: gpt-image-1
+                              price: { input: 10.00, cachedInput: 2.50, output: 40.00 }
+                        audioTokens:
+                          unit: PER_1M_TOKENS
+                          items:
+                            - modelId: gpt-4o-audio-preview
+                              price: { input: 40.00, output: 80.00 }
+                            - modelId: gpt-4o-mini-audio-preview
+                              price: { input: 10.00, output: 20.00 }
+                            - modelId: gpt-4o-realtime-preview
+                              price: { input: 40.00, cachedInput: 2.50, output: 80.00 }
+                            - modelId: gpt-4o-mini-realtime-preview
+                              price: { input: 10.00, cachedInput: 0.30, output: 20.00 }
+                        fineTuning:
+                          items:
+                            - modelId: o4-mini-2025-04-16
+                              trainingHourUSD: 100.00
+                              inference: { input: 4.00, cachedInput: 1.00, output: 16.00 }
+                            - modelId: gpt-4.1-2025-04-14
+                              trainingPer1MTokensUSD: 25.00
+                              inference: { input: 3.00, cachedInput: 0.75, output: 12.00 }
+                            - modelId: gpt-4.1-mini-2025-04-14
+                              trainingPer1MTokensUSD: 5.00
+                              inference: { input: 0.80, cachedInput: 0.20, output: 3.20 }
+                            - modelId: gpt-4.1-nano-2025-04-14
+                              trainingPer1MTokensUSD: 1.50
+                              inference: { input: 0.20, cachedInput: 0.05, output: 0.80 }
+                        builtInTools:
+                          items:
+                            - tool: code_interpreter
+                              pricing: { unit: PER_CONTAINER, amount: 0.03 }
+                            - tool: file_search_storage
+                              pricing: { unit: PER_GB_DAY, amount: 0.10, notes: 'primer GB gratis' }
+                            - tool: file_search_tool_call
+                              pricing: { unit: PER_2K_CALLS, amount: 2.50 }
+                            - tool: web_search_gpt4o_family
+                              pricing: { unit: PER_1K_CALLS, amount: 25.00, notes: 'contenido de búsqueda incluido' }
+                            - tool: web_search_gpt5_o_series
+                              pricing: { unit: PER_1K_CALLS, amount: 10.00, notes: 'contenido facturado al modelo' }
+                        transcriptionSpeech:
+                          items:
+                            - modelId: gpt-4o-mini-tts
+                              textTokens: { input: 0.60, output: 12.00 }
+                              estimatedCostPerMinuteUSD: 0.015
+                            - modelId: gpt-4o-transcribe
+                              textTokens: { input: 2.50, output: 10.00 }
+                              audioTokens: { input: 6.00 }
+                              estimatedCostPerMinuteUSD: 0.006
+                            - modelId: gpt-4o-mini-transcribe
+                              textTokens: { input: 1.25, output: 5.00 }
+                              audioTokens: { input: 3.00 }
+                              estimatedCostPerMinuteUSD: 0.003
+                            - modelId: whisper
+                              otherUnits:
+                                - unit: PER_MINUTE
+                                  amount: 0.006
+                            - modelId: tts
+                              otherUnits:
+                                - unit: PER_1M_CHARACTERS
+                                  amount: 15.00
+                            - modelId: tts-hd
+                              otherUnits:
+                                - unit: PER_1M_CHARACTERS
+                                  amount: 30.00
+                        imageGeneration:
+                          unit: PER_IMAGE
+                          items:
+                            - modelId: gpt-image-1
+                              matrix:
+                                - quality: low
+                                  size: 1024x1024
+                                  amount: 0.011
+                                - quality: medium
+                                  size: 1024x1024
+                                  amount: 0.042
+                                - quality: high
+                                  size: 1024x1024
+                                  amount: 0.167
+                                - quality: low
+                                  size: 1024x1536
+                                  amount: 0.016
+                                - quality: medium
+                                  size: 1024x1536
+                                  amount: 0.063
+                                - quality: high
+                                  size: 1024x1536
+                                  amount: 0.250
+                                - quality: low
+                                  size: 1536x1024
+                                  amount: 0.016
+                            - modelId: dalle-3
+                              matrix:
+                                - quality: standard
+                                  size: 1024x1024
+                                  amount: 0.04
+                                - quality: hd
+                                  size: 1024x1024
+                                  amount: 0.08
+                                - quality: standard
+                                  size: 1024x1792
+                                  amount: 0.08
+                                - quality: hd
+                                  size: 1024x1792
+                                  amount: 0.12
+                                - quality: standard
+                                  size: 1792x1024
+                                  amount: 0.08
+                                - quality: hd
+                                  size: 1792x1024
+                                  amount: 0.12
+                            - modelId: dalle-2
+                              matrix:
+                                - quality: standard
+                                  size: 256x256
+                                  amount: 0.016
+                                - quality: standard
+                                  size: 512x512
+                                  amount: 0.018
+                                - quality: standard
+                                  size: 1024x1024
+                                  amount: 0.020
+                        embeddings:
+                          unit: PER_1M_TOKENS
+                          items:
+                            - modelId: text-embedding-3-small
+                              price: { input: 0.01 }
+                            - modelId: text-embedding-3-large
+                              price: { input: 0.065 }
+                            - modelId: text-embedding-ada-002
+                              price: { input: 0.05 }
+                        moderation:
+                          free: true
+                          notes: 'omni-moderation sin coste'
+                        legacyTextModels:
+                          unit: PER_1M_TOKENS
+                          items:
+                            - modelId: chatgpt-4o-latest
+                              price: { input: 5.00, output: 15.00 }
+                            - modelId: gpt-4-0125-preview
+                              price: { input: 10.00, output: 30.00 }
+                            - modelId: gpt-3.5-turbo
+                              price: { input: 0.50, output: 1.50 }
+                            - modelId: davinci-002
+                              price: { input: 2.00, output: 2.00 }
+                            - modelId: babbage-002
+                              price: { input: 0.40, output: 0.40 }
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    XRequestIdHeader:
+      description: Header used to define the identifier of a specific request.
+      schema:
+        type: string
+        format: uuid
+        minLength: 36
+        maxLength: 36
+        example: 54b9c11c-9162-45a1-a352-0d95734cd079
+    Location:
+      required: true
+      description: Resource URL created.
+      schema:
+        type: string
+        minLength: 4
+        maxLength: 500
+        pattern: '^/[A-Za-z0-9_\-/]+$'
+        example: /llm-adapter-service/v0/prompts/templates/PLAN_JSON_V1
+
+  parameters:
+    Accept-Language-Header:
+      name: Accept-Language
+      in: header
+      required: false
+      description: ISO code of the language that the client accepts.
+      schema:
+        type: string
+        default: es-ES
+        pattern: '^[a-z]{2}(-[A-Z]{2})?$'
+        minLength: 2
+        maxLength: 6
+        example: es-ES
+    X-Request-Id-Header:
+      name: X-Request-ID
+      in: header
+      required: true
+      description: Unique identifier for tracing an HTTP request (uuid v4).
+      schema:
+        type: string
+        format: uuid
+        minLength: 36
+        maxLength: 36
+        example: a0eeb5a3-14cf-4f71-b8b3-5a77b54a1f1e
+    Template-Id:
+      name: templateId
+      in: path
+      required: true
+      description: Identificador MAYUSCULAS y guion bajo.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 64
+        pattern: '^[A-Z0-9_]+$'
+        example: PLAN_JSON_V1
+    Prompt-Name-Search:
+      name: name
+      in: query
+      required: false
+      description: Filtro por nombre/alias (contiene, case-insensitive).
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        pattern: '^[A-Za-z0-9 _\-.]+$'
+        example: Plan JSON
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: The offset for pagination.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Number of records per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+
+    # ======== MODELS ========
+    Model:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 2
+          maxLength: 128
+        provider:
+          type: string
+          enum: [openai, azure_openai]
+        contextWindow:
+          type: integer
+          minimum: 4096
+          maximum: 1048576
+        maxOutputTokens:
+          type: integer
+          minimum: 64
+          maximum: 32768
+        modalities:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum: [text, structured_json]
+        status:
+          type: string
+          enum: [active, deprecated, unavailable]
+      required: [id, provider, contextWindow, maxOutputTokens, modalities, status]
+
+    # ======== PROMPTS ========
+    PromptVariable:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-zA-Z_][a-zA-Z0-9_]*$'
+          example: profile
+        type:
+          type: string
+          enum: [string, number, boolean, object, array]
+        required:
+          type: boolean
+          default: true
+        description:
+          type: string
+          maxLength: 300
+      required: [name, type]
+
+    PromptTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+          example: PLAN_JSON_V1
+        name:
+          type: string
+          minLength: 3
+          maxLength: 120
+          pattern: '^[A-Za-z0-9 _\-.]+$'
+          example: Plan JSON v1
+        systemPrompt:
+          type: string
+          minLength: 10
+          maxLength: 20000
+          example: 'Eres un planificador financiero. Devuelve JSON EXACTO al schema.'
+        userTemplate:
+          type: string
+          minLength: 10
+          maxLength: 20000
+          example: |
+            PERFIL: {{profile}}
+            CUENTAS: {{accounts}}
+            GASTO_90D: {{spend}}
+            DEUDAS: {{debts}}
+            CATALOGO_PLANTILLAS: {{templates}}
+            Devuelve SOLO JSON al schema.
+        variables:
+          type: array
+          items: { $ref: '#/components/schemas/PromptVariable' }
+        protected:
+          type: boolean
+          description: Evita borrado/modificación accidental.
+          default: false
+      required: [id, name, systemPrompt, userTemplate]
+
+    PromptTemplateData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/PromptTemplate' }
+      required: [data]
+
+    PromptTemplateListData:
+      type: object
+      properties:
+        data:
+          type: array
+          minItems: 0
+          items: { $ref: '#/components/schemas/PromptTemplate' }
+        pagination:
+          type: object
+          properties:
+            offset: { type: integer, minimum: 0 }
+            limit: { type: integer, minimum: 1, maximum: 100 }
+            totalElements: { type: integer, minimum: 0 }
+            totalPages: { type: integer, minimum: 0 }
+            pageNumber: { type: integer, minimum: 0 }
+
+    # ======== PLAN OUTPUT ========
+    Envelopes:
+      type: object
+      additionalProperties:
+        type: number
+        minimum: 0
+        maximum: 1
+      example:
+        fijos: 0.45
+        variables: 0.28
+        objetivos: 0.27
+
+    PlanAdjustments:
+      type: object
+      properties:
+        saving_pct: { type: number, minimum: 0, maximum: 1 }
+        emergency_months: { type: integer, minimum: 0, maximum: 24 }
+        envelopes: { $ref: '#/components/schemas/Envelopes' }
+      required: [saving_pct, emergency_months]
+
+    PlanLLMOutput:
+      type: object
+      properties:
+        template_id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+          example: EQUILIBRADO_50_30_20
+        adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
+        rationale:
+          type: string
+          minLength: 3
+          maxLength: 2000
+        alerts:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 300
+      required: [template_id, adjustments]
+
+    PlanLLMOutputData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/PlanLLMOutput' }
+      required: [data]
+
+    PlanLLMOutputSchemaDoc:
+      type: object
+      description: Documento JSON Schema completo (para clientes).
+      additionalProperties: true
+      properties:
+        title: { type: string, example: PlanLLMOutput }
+        type: { type: string, example: object }
+
+    ResponseFormat:
+      type: string
+      enum: [json_schema]
+      example: json_schema
+
+    GenerationParams:
+      type: object
+      properties:
+        modelId:
+          type: string
+          minLength: 2
+          maxLength: 128
+          example: gpt-4o-mini
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.2
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1
+        max_output_tokens:
+          type: integer
+          minimum: 256
+          maximum: 8192
+          default: 2048
+        seed:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+        presence_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+        frequency_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+      required: [modelId]
+
+    ValidationTarget:
+      type: object
+      properties:
+        schema:
+          type: object
+          description: JSON Schema para validar (si no se usa esquema por defecto).
+        json:
+          type: object
+          description: Documento a validar.
+      required: [json]
+
+    Error:
+      title: Error
+      type: object
+      description: General structure to represent errors.
+      properties:
+        messages:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                pattern: '^[A-Z0-9_]+$'
+                minLength: 2
+                maxLength: 100
+                example: UNEXPECTED_ERROR
+              message:
+                type: string
+                minLength: 1
+                maxLength: 10000
+                example: Unexpected error
+              type:
+                type: string
+                enum: [CRITICAL, FATAL, ERROR, WARNING, INFO]
+              description:
+                type: string
+                minLength: 1
+                maxLength: 2000
+                example: The server cannot process the request.
+            required: [code, message, type, description]
+      required: [messages]
+
+    # ======== BILLING / PRICES ========
+    PriceUnit:
+      type: string
+      enum:
+        - PER_1M_TOKENS
+        - PER_IMAGE
+        - PER_CONTAINER
+        - PER_GB_DAY
+        - PER_2K_CALLS
+        - PER_1K_CALLS
+        - PER_MINUTE
+        - PER_1M_CHARACTERS
+
+    PriceTriple:
+      type: object
+      description: Precios por 1M tokens (según corresponda).
+      properties:
+        input: { type: number, minimum: 0 }
+        cachedInput: { type: number, minimum: 0 }
+        output: { type: number, minimum: 0 }
+      additionalProperties: false
+
+    TextModelPrice:
+      type: object
+      properties:
+        modelId:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9\-.]*$'
+          minLength: 2
+          maxLength: 64
+        price: { $ref: '#/components/schemas/PriceTriple' }
+      required: [modelId, price]
+
+    TokensCategory:
+      type: object
+      properties:
+        unit: { $ref: '#/components/schemas/PriceUnit' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TextModelPrice' }
+      required: [unit, items]
+
+    FineTuningItem:
+      type: object
+      properties:
+        modelId:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9\-.]*$'
+        trainingHourUSD: { type: number, minimum: 0 }
+        trainingPer1MTokensUSD: { type: number, minimum: 0 }
+        inference: { $ref: '#/components/schemas/PriceTriple' }
+      additionalProperties: false
+      anyOf:
+        - required: [trainingHourUSD]
+        - required: [trainingPer1MTokensUSD]
+
+    BuiltInToolItem:
+      type: object
+      properties:
+        tool:
+          type: string
+          enum:
+            - code_interpreter
+            - file_search_storage
+            - file_search_tool_call
+            - web_search_gpt4o_family
+            - web_search_gpt5_o_series
+        pricing:
+          type: object
+          properties:
+            unit: { $ref: '#/components/schemas/PriceUnit' }
+            amount: { type: number, minimum: 0 }
+            notes: { type: string, maxLength: 200 }
+          required: [unit, amount]
+      required: [tool, pricing]
+
+    TranscriptionSpeechItem:
+      type: object
+      properties:
+        modelId:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9\-.]*$'
+        textTokens: { $ref: '#/components/schemas/PriceTriple' }
+        audioTokens: { $ref: '#/components/schemas/PriceTriple' }
+        otherUnits:
+          type: array
+          items:
+            type: object
+            properties:
+              unit: { $ref: '#/components/schemas/PriceUnit' }
+              amount: { type: number, minimum: 0 }
+            required: [unit, amount]
+        estimatedCostPerMinuteUSD: { type: number, minimum: 0 }
+      required: [modelId]
+
+    ImageMatrixItem:
+      type: object
+      properties:
+        quality:
+          type: string
+          enum: [low, medium, high, standard, hd]
+        size:
+          type: string
+          enum:
+            - 256x256
+            - 512x512
+            - 1024x1024
+            - 1024x1536
+            - 1536x1024
+            - 1024x1792
+            - 1792x1024
+        amount: { type: number, minimum: 0 }
+      required: [quality, size, amount]
+
+    ImageGenerationItem:
+      type: object
+      properties:
+        modelId:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9\-.]*$'
+        matrix:
+          type: array
+          items: { $ref: '#/components/schemas/ImageMatrixItem' }
+      required: [modelId, matrix]
+
+    EmbeddingItem:
+      type: object
+      properties:
+        modelId:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9\-.]*$'
+        price:
+          type: object
+          properties:
+            input: { type: number, minimum: 0 }
+          required: [input]
+      required: [modelId, price]
+
+    PriceCatalog:
+      type: object
+      properties:
+        provider: { type: string, enum: [openai, azure_openai] }
+        tier: { type: string, enum: [standard, batch, flex, priority] }
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: USD
+        effectiveAt: { type: string, format: date-time }
+        categories:
+          type: object
+          properties:
+            textTokens: { $ref: '#/components/schemas/TokensCategory' }
+            imageTokens: { $ref: '#/components/schemas/TokensCategory' }
+            audioTokens: { $ref: '#/components/schemas/TokensCategory' }
+            fineTuning:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/FineTuningItem' }
+              required: [items]
+            builtInTools:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/BuiltInToolItem' }
+              required: [items]
+            transcriptionSpeech:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/TranscriptionSpeechItem' }
+              required: [items]
+            imageGeneration:
+              type: object
+              properties:
+                unit: { $ref: '#/components/schemas/PriceUnit' }
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/ImageGenerationItem' }
+              required: [unit, items]
+            embeddings:
+              type: object
+              properties:
+                unit: { $ref: '#/components/schemas/PriceUnit' }
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/EmbeddingItem' }
+              required: [unit, items]
+            moderation:
+              type: object
+              properties:
+                free: { type: boolean }
+                notes: { type: string, maxLength: 200 }
+              required: [free]
+            legacyTextModels: { $ref: '#/components/schemas/TokensCategory' }
+          required:
+            - textTokens
+      required: [provider, tier, currency, effectiveAt, categories]
+
+  requestBodies:
+    PromptTemplateRequestBody:
+      description: Datos completos de la plantilla de prompt.
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PromptTemplate' }
+          examples:
+            sample:
+              value:
+                id: PLAN_JSON_V1
+                name: Plan JSON v1
+                systemPrompt: >
+                  Eres un planificador financiero. Devuelve SOLO JSON válido
+                  EXACTO al schema especificado. No añadas comentarios ni texto fuera del JSON.
+                userTemplate: |
+                  PERFIL: {{profile}}
+                  CUENTAS: {{accounts}}
+                  GASTO_90D: {{spend}}
+                  DEUDAS: {{debts}}
+                  CATALOGO_PLANTILLAS: {{templates}}
+                  INSTRUCCIONES: Selecciona la mejor plantilla, ajusta +-5% y devuelve JSON.
+                variables:
+                  - name: profile
+                    type: object
+                    required: true
+                    description: Perfil financiero agregado
+                  - name: accounts
+                    type: object
+                    required: false
+                  - name: spend
+                    type: object
+                    required: false
+                  - name: debts
+                    type: object
+                    required: false
+                protected: true
+
+    JsonValidateRequestBody:
+      description: JSON para validar contra un schema (propio o por defecto).
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationTarget' }
+          examples:
+            sample:
+              value:
+                schema:
+                  type: object
+                  properties:
+                    foo:
+                      type: integer
+                      minimum: 0
+                  required: [foo]
+                json:
+                  foo: 3
+
+    PlanGenerateLLMRequestBody:
+      description: Solicitud de generación (usa template + variables + schema del plan).
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              templateId:
+                type: string
+                minLength: 3
+                maxLength: 64
+                pattern: '^[A-Z0-9_]+$'
+                example: PLAN_JSON_V1
+              variables:
+                type: object
+                additionalProperties: true
+                description: Mapa con valores para las variables del prompt.
+              responseFormat:
+                $ref: '#/components/schemas/ResponseFormat'
+              schema:
+                type: object
+                description: JSON Schema alternativo (si se omite, se usa el oficial del plan).
+              generation:
+                $ref: '#/components/schemas/GenerationParams'
+            required: [templateId, variables, responseFormat, generation]
+          examples:
+            minimal:
+              value:
+                templateId: PLAN_JSON_V1
+                variables:
+                  profile:
+                    incomeNet: 2500
+                    expensesFixed: 1200
+                    expensesVariable: 600
+                    riskScore: 3
+                    liquidityNeed: 0.4
+                responseFormat: json_schema
+                generation:
+                  modelId: gpt-4o-mini
+                  temperature: 0.2
+                  max_output_tokens: 2048
+
+  responses:
+    '204':
+      description: No Content.
+    '400':
+      description: Bad Request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            invalid-params:
+              value:
+                messages:
+                  - code: BAD_REQUEST
+                    message: Invalid parameters
+                    type: ERROR
+                    description: Missing required field templateId.
+    '401':
+      description: Unauthorized.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            unauthorized:
+              value:
+                messages:
+                  - code: UNAUTHORIZED
+                    message: Missing or invalid token
+                    type: ERROR
+                    description: Provide a valid bearer token.
+    '404':
+      description: Not Found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            not-found:
+              value:
+                messages:
+                  - code: NOT_FOUND
+                    message: Resource not found
+                    type: FATAL
+                    description: Prompt template PLAN_JSON_V1 not found.
+    '409':
+      description: Conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            conflict:
+              value:
+                messages:
+                  - code: CONFLICT
+                    message: Template id already exists
+                    type: ERROR
+                    description: Use another id.
+    '422':
+      description: Unprocessable Entity.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            schema-validation-failed:
+              value:
+                messages:
+                  - code: SCHEMA_VALIDATION_FAILED
+                    message: Output does not match schema
+                    type: ERROR
+                    description: adjustments.saving_pct must be <= 1
+    '429':
+      description: Too Many Requests.
+      headers:
+        Retry-After:
+          description: Segundos sugeridos antes de reintentar.
+          schema: { type: integer, minimum: 1, example: 10 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            rate-limit:
+              value:
+                messages:
+                  - code: RATE_LIMIT
+                    message: Too many requests
+                    type: ERROR
+                    description: Backoff and retry later.
+    '500':
+      description: Internal Server Error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            internal:
+              value:
+                messages:
+                  - code: INTERNAL_SERVER_ERROR
+                    message: Internal server error
+                    type: FATAL
+                    description: Unexpected error from server.
+    '502':
+      description: Bad Gateway (Proveedor LLM).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            provider-error:
+              value:
+                messages:
+                  - code: BAD_GATEWAY
+                    message: Upstream error
+                    type: ERROR
+                    description: Provider returned invalid JSON or 5xx.
+    '503':
+      description: Service Unavailable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            provider-down:
+              value:
+                messages:
+                  - code: SERVICE_UNAVAILABLE
+                    message: Provider unavailable
+                    type: ERROR
+                    description: Dependency is down or maintenance mode.
+    '504':
+      description: Gateway Timeout (Proveedor LLM).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            timeout:
+              value:
+                messages:
+                  - code: GATEWAY_TIMEOUT
+                    message: Timeout
+                    type: ERROR
+                    description: Timeout waiting for provider response.
+
+security:
+  - bearerAuth: []

@@ -1,0 +1,6 @@
+package com.revplan.llm.domain.enums;
+
+public enum ToolEnum {
+    CODE_INTERPRETER, FILE_SEARCH_STORAGE, FILE_SEARCH_TOOL_CALL,
+    WEB_SEARCH_GPT4O_FAMILY, WEB_SEARCH_GPT5_O_SERIES
+}
