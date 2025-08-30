@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.UUID;
+
 @RestController
 @RequiredArgsConstructor
 public class HealthController implements HealthApi {
@@ -17,6 +19,11 @@ public class HealthController implements HealthApi {
     @Override
     public ResponseEntity<HealthLLM200ResponseDTO> healthLLM() {
         var h = healthService.check();
-        return ResponseEntity.ok(mapper.toDto(h));
+        var dto = mapper.toDto(h);
+
+        String requestId = UUID.randomUUID().toString();
+        return ResponseEntity.ok()
+                            .header("X-Request-ID", requestId)
+                            .body(dto);
     }
 }

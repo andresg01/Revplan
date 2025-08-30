@@ -2,8 +2,9 @@ package com.revplan.llm.infra.api.rest.mapper;
 
 import org.mapstruct.Mapper;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Locale;
 
 import com.revplan.llm.domain.enums.*;
 import com.revplan.llm.domain.model.*;
@@ -35,7 +36,182 @@ import com.revplan.llm.infra.api.dto.TranscriptionSpeechItemOtherUnitsInnerDTO;
 public interface BillingPricesApiMapper {
 
     // =========================================================================
-    // Enums
+    // Helpers para enums con nombres “especiales” del codegen
+    // =========================================================================
+
+    // ---- PriceUnit: dominio -> DTO ----
+    private PriceUnitDTO mapPriceUnit(PriceUnitEnum src) {
+        if (src == null) return null;
+
+        // OpenAPI codegen suele insertar _ antes de M/K: 1M -> 1_M, 1K -> 1_K, 2K -> 2_K
+        String candidate = src.name()
+                .replace("1M", "1_M")
+                .replace("2K", "2_K")
+                .replace("1K", "1_K");
+
+        // Intento directo por name()
+        try {
+            return PriceUnitDTO.valueOf(candidate);
+        } catch (IllegalArgumentException ignore) {
+            // Fallback: usar fromValue(String) si existe (suele aceptar "per_1m_tokens", etc.)
+            String jsonLike = src.name().toLowerCase(Locale.ROOT);
+            jsonLike = jsonLike
+                    .replace("__", "_") // por si acaso
+                    .replace("1m", "1m")
+                    .replace("2k", "2k")
+                    .replace("1k", "1k");
+            PriceUnitDTO viaFromValue = invokeEnumFromValue(PriceUnitDTO.class, jsonLike);
+            if (viaFromValue != null) return viaFromValue;
+
+            // Último intento: probar también con nombre transformado a lower + guiones bajos
+            String lowerName = candidate.toLowerCase(Locale.ROOT);
+            viaFromValue = invokeEnumFromValue(PriceUnitDTO.class, lowerName);
+            if (viaFromValue != null) return viaFromValue;
+
+            throw new IllegalArgumentException(
+                    "No se pudo mapear PriceUnitEnum '" + src.name() + "' -> PriceUnitDTO. Intenté '" +
+                            candidate + "', '" + jsonLike + "' y '" + lowerName + "'. Revisa los constantes del DTO."
+            );
+        }
+    }
+
+    // ---- PriceUnit: DTO -> dominio ----
+    private PriceUnitEnum mapPriceUnit(PriceUnitDTO src) {
+        if (src == null) return null;
+
+        // Intento directo por name()
+        try {
+            return PriceUnitEnum.valueOf(src.name()
+                    .replace("1_M", "1M")
+                    .replace("2_K", "2K")
+                    .replace("1_K", "1K"));
+        } catch (IllegalArgumentException ignore) {
+            // Si el codegen trae value distinto del name, intentamos con fromValue inverso:
+            // Usamos value() si existe; si no, probamos con name() en minúsculas como aproximación.
+            String valueLike = invokeEnumValueAccessor(src);
+            if (valueLike == null || valueLike.isBlank()) valueLike = src.name().toLowerCase(Locale.ROOT);
+
+            // Normalizamos a forma del dominio:
+            // per_1m_tokens -> PER_1M_TOKENS; per_gb_day -> PER_GB_DAY, etc.
+            String candidate = valueLike.toUpperCase(Locale.ROOT)
+                    .replace("PER_1M_", "PER_1M_")
+                    .replace("PER_2K_", "PER_2K_")
+                    .replace("PER_1K_", "PER_1K_");
+
+            try {
+                return PriceUnitEnum.valueOf(candidate);
+            } catch (IllegalArgumentException ex) {
+                // Segundo intento: por si el name() ya traía 1_M/1_K/2_K:
+                String byName = src.name()
+                        .replace("1_M", "1M")
+                        .replace("2_K", "2K")
+                        .replace("1_K", "1K");
+                return PriceUnitEnum.valueOf(byName);
+            }
+        }
+    }
+
+    // ---- ImageSize: dominio -> DTO ----
+    private ImageMatrixItemDTO.SizeEnum mapSizeToDto(ImageSizeEnum src) {
+        if (src == null) return null;
+
+        // 1) Intento directo por name() (p.ej. _1024X1024)
+        try {
+            return ImageMatrixItemDTO.SizeEnum.valueOf(src.name());
+        } catch (IllegalArgumentException ignore) {
+            // 2) Fallback: muchos DTOs llevan fromValue("1024x1024")
+            String raw = src.name();
+            // Dom: _1024X1024 -> "1024x1024"
+            if (raw.startsWith("_")) raw = raw.substring(1);
+            raw = raw.replace('X', 'x');
+            ImageMatrixItemDTO.SizeEnum viaFromValue =
+                    invokeEnumFromValue(ImageMatrixItemDTO.SizeEnum.class, raw);
+            if (viaFromValue != null) return viaFromValue;
+
+            throw new IllegalArgumentException(
+                    "No se pudo mapear ImageSizeEnum '" + src.name() + "' -> ImageMatrixItemDTO.SizeEnum"
+            );
+        }
+    }
+
+    // ---- ImageSize: DTO -> dominio ----
+    private ImageSizeEnum mapSizeToModel(ImageMatrixItemDTO.SizeEnum src) {
+        if (src == null) return null;
+
+        // 1) Intento directo por name()
+        try {
+            return ImageSizeEnum.valueOf(src.name());
+        } catch (IllegalArgumentException ignore) {
+            // 2) Invertimos fromValue si existe y nos da "1024x1024"
+            String valueLike = invokeEnumValueAccessor(src);
+            if (valueLike == null || valueLike.isBlank()) {
+                // como alternativa, usamos name() -> intentamos quitar prefijos y normalizar
+                valueLike = src.name();
+            }
+            String dom = valueLike.toUpperCase(Locale.ROOT).replace('X', 'X');
+            // "1024x1024" -> "_1024X1024"
+            dom = "_" + dom.replace('x', 'X');
+            return ImageSizeEnum.valueOf(dom);
+        }
+    }
+
+    // ---- ImageQuality: añadimos fallback por fromValue por si el codegen lo usa ----
+    private ImageMatrixItemDTO.QualityEnum mapQualityToDto(ImageQualityEnum src) {
+        if (src == null) return null;
+        try {
+            return ImageMatrixItemDTO.QualityEnum.valueOf(src.name());
+        } catch (IllegalArgumentException ignore) {
+            ImageMatrixItemDTO.QualityEnum viaFromValue =
+                    invokeEnumFromValue(ImageMatrixItemDTO.QualityEnum.class, src.name().toLowerCase(Locale.ROOT));
+            if (viaFromValue != null) return viaFromValue;
+            throw new IllegalArgumentException(
+                    "No se pudo mapear ImageQualityEnum '" + src.name() + "' -> ImageMatrixItemDTO.QualityEnum"
+            );
+        }
+    }
+
+    private ImageQualityEnum mapQualityToModel(ImageMatrixItemDTO.QualityEnum src) {
+        if (src == null) return null;
+        try {
+            return ImageQualityEnum.valueOf(src.name());
+        } catch (IllegalArgumentException ignore) {
+            String valueLike = invokeEnumValueAccessor(src);
+            if (valueLike == null || valueLike.isBlank()) valueLike = src.name().toLowerCase(Locale.ROOT);
+            return ImageQualityEnum.valueOf(valueLike.toUpperCase(Locale.ROOT));
+        }
+    }
+
+    // ---- util: invocar fromValue(String) estático si existe en el enum del DTO ----
+    private static <E extends Enum<E>> E invokeEnumFromValue(Class<E> enumClass, String value) {
+        try {
+            Method m = enumClass.getDeclaredMethod("fromValue", String.class);
+            @SuppressWarnings("unchecked")
+            E result = (E) m.invoke(null, value);
+            return result;
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
+    // ---- util: obtener value() (o getValue()) de un enum DTO (OpenAPI codegen) ----
+    private static String invokeEnumValueAccessor(Object enumInstance) {
+        try {
+            Method m = enumInstance.getClass().getDeclaredMethod("getValue");
+            Object v = m.invoke(enumInstance);
+            return v == null ? null : String.valueOf(v);
+        } catch (Exception ignore) {
+            try {
+                Method m = enumInstance.getClass().getDeclaredMethod("value");
+                Object v = m.invoke(enumInstance);
+                return v == null ? null : String.valueOf(v);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+    }
+
+    // =========================================================================
+    // Enums (expuestos a MapStruct)
     // =========================================================================
     default BuiltInToolItemDTO.ToolEnum toDto(ToolEnum e) {
         return e == null ? null : BuiltInToolItemDTO.ToolEnum.valueOf(e.name());
@@ -44,25 +220,27 @@ public interface BillingPricesApiMapper {
         return e == null ? null : ToolEnum.valueOf(e.name());
     }
 
+    // *** FIX clave: usar helpers para PriceUnit ***
     default PriceUnitDTO toDto(PriceUnitEnum e) {
-        return e == null ? null : PriceUnitDTO.valueOf(e.name());
+        return mapPriceUnit(e);
     }
     default PriceUnitEnum toModel(PriceUnitDTO e) {
-        return e == null ? null : PriceUnitEnum.valueOf(e.name());
+        return mapPriceUnit(e);
     }
 
+    // *** Añadimos helpers para Quality / Size ***
     default ImageMatrixItemDTO.QualityEnum toDto(ImageQualityEnum e) {
-        return e == null ? null : ImageMatrixItemDTO.QualityEnum.valueOf(e.name());
+        return mapQualityToDto(e);
     }
     default ImageQualityEnum toModel(ImageMatrixItemDTO.QualityEnum e) {
-        return e == null ? null : ImageQualityEnum.valueOf(e.name());
+        return mapQualityToModel(e);
     }
 
     default ImageMatrixItemDTO.SizeEnum toDto(ImageSizeEnum e) {
-        return e == null ? null : ImageMatrixItemDTO.SizeEnum.valueOf(e.name());
+        return mapSizeToDto(e);
     }
     default ImageSizeEnum toModel(ImageMatrixItemDTO.SizeEnum e) {
-        return e == null ? null : ImageSizeEnum.valueOf(e.name());
+        return mapSizeToModel(e);
     }
 
     // (si usas enums de provider/tier en el PriceCatalog raíz)
@@ -158,14 +336,14 @@ public interface BillingPricesApiMapper {
         if (m == null) return null;
         TokensCategoryDTO dto = new TokensCategoryDTO();
         dto.setUnit(toDto(m.getUnit()));
-        List<TextModelPriceDTO> items = new ArrayList<>();
+        var items = new ArrayList<TextModelPriceDTO>();
         if (m.getItems() != null) for (TextModelPrice it : m.getItems()) items.add(toDto(it));
         dto.setItems(items);
         return dto;
     }
     default TokensCategory toModel(TokensCategoryDTO dto) {
         if (dto == null) return null;
-        List<TextModelPrice> items = new ArrayList<>();
+        var items = new ArrayList<TextModelPrice>();
         if (dto.getItems() != null) for (TextModelPriceDTO it : dto.getItems()) items.add(toModel(it));
         return TokensCategory.builder()
                 .unit(toModel(dto.getUnit()))
@@ -212,7 +390,7 @@ public interface BillingPricesApiMapper {
         dto.setModelId(m.getModelId());
         dto.setTextTokens(toDto(m.getTextTokens()));
         dto.setAudioTokens(toDto(m.getAudioTokens()));
-        List<TranscriptionSpeechItemOtherUnitsInnerDTO> others = new ArrayList<>();
+        var others = new ArrayList<TranscriptionSpeechItemOtherUnitsInnerDTO>();
         if (m.getOtherUnits() != null) for (TranscriptionOtherUnit ou : m.getOtherUnits()) others.add(toDto(ou));
         dto.setOtherUnits(others);
         dto.setEstimatedCostPerMinuteUSD(m.getEstimatedCostPerMinuteUSD());
@@ -220,7 +398,7 @@ public interface BillingPricesApiMapper {
     }
     default TranscriptionSpeechItem toModel(TranscriptionSpeechItemDTO dto) {
         if (dto == null) return null;
-        List<TranscriptionOtherUnit> others = new ArrayList<>();
+        var others = new ArrayList<TranscriptionOtherUnit>();
         if (dto.getOtherUnits() != null) for (TranscriptionSpeechItemOtherUnitsInnerDTO ou : dto.getOtherUnits()) others.add(toModel(ou));
         return TranscriptionSpeechItem.builder()
                 .modelId(dto.getModelId())
@@ -254,14 +432,14 @@ public interface BillingPricesApiMapper {
         if (m == null) return null;
         ImageGenerationItemDTO dto = new ImageGenerationItemDTO();
         dto.setModelId(m.getModelId());
-        List<ImageMatrixItemDTO> list = new ArrayList<>();
+        var list = new ArrayList<ImageMatrixItemDTO>();
         if (m.getMatrix() != null) for (ImageMatrixItem it : m.getMatrix()) list.add(toDto(it));
         dto.setMatrix(list);
         return dto;
     }
     default ImageGenerationItem toModel(ImageGenerationItemDTO dto) {
         if (dto == null) return null;
-        List<ImageMatrixItem> list = new ArrayList<>();
+        var list = new ArrayList<ImageMatrixItem>();
         if (dto.getMatrix() != null) for (ImageMatrixItemDTO it : dto.getMatrix()) list.add(toModel(it));
         return ImageGenerationItem.builder()
                 .modelId(dto.getModelId())
@@ -274,7 +452,7 @@ public interface BillingPricesApiMapper {
         if (m == null) return null;
         EmbeddingItemDTO dto = new EmbeddingItemDTO();
         dto.setModelId(m.getModelId());
-        dto.setPrice(toDto(m.getPrice())); // EmbeddingPrice -> EmbeddingItemPriceDTO
+        dto.setPrice(toDto(m.getPrice()));
         return dto;
     }
     default EmbeddingItem toModel(EmbeddingItemDTO dto) {
@@ -314,14 +492,14 @@ public interface BillingPricesApiMapper {
         if (m == null) return null;
         PriceCatalogCategoriesEmbeddingsDTO dto = new PriceCatalogCategoriesEmbeddingsDTO();
         dto.setUnit(toDto(m.getUnit()));
-        List<EmbeddingItemDTO> items = new ArrayList<>();
+        var items = new ArrayList<EmbeddingItemDTO>();
         if (m.getItems() != null) for (EmbeddingItem it : m.getItems()) items.add(toDto(it));
         dto.setItems(items);
         return dto;
     }
     default PriceCatalogEmbeddingsCategory toModel(PriceCatalogCategoriesEmbeddingsDTO dto) {
         if (dto == null) return null;
-        List<EmbeddingItem> items = new ArrayList<>();
+        var items = new ArrayList<EmbeddingItem>();
         if (dto.getItems() != null) for (EmbeddingItemDTO it : dto.getItems()) items.add(toModel(it));
         return PriceCatalogEmbeddingsCategory.builder()
                 .unit(toModel(dto.getUnit()))
@@ -334,14 +512,14 @@ public interface BillingPricesApiMapper {
         if (m == null) return null;
         PriceCatalogCategoriesImageGenerationDTO dto = new PriceCatalogCategoriesImageGenerationDTO();
         dto.setUnit(toDto(m.getUnit()));
-        List<ImageGenerationItemDTO> items = new ArrayList<>();
+        var items = new ArrayList<ImageGenerationItemDTO>();
         if (m.getItems() != null) for (ImageGenerationItem it : m.getItems()) items.add(toDto(it));
         dto.setItems(items);
         return dto;
     }
     default PriceCatalogImageGenerationCategory toModel(PriceCatalogCategoriesImageGenerationDTO dto) {
         if (dto == null) return null;
-        List<ImageGenerationItem> items = new ArrayList<>();
+        var items = new ArrayList<ImageGenerationItem>();
         if (dto.getItems() != null) for (ImageGenerationItemDTO it : dto.getItems()) items.add(toModel(it));
         return PriceCatalogImageGenerationCategory.builder()
                 .unit(toModel(dto.getUnit()))
@@ -349,23 +527,23 @@ public interface BillingPricesApiMapper {
                 .build();
     }
 
-    // Moderation category (ojo con getFree/setFree en el DTO)
+    // Moderation category
     default PriceCatalogCategoriesModerationDTO toDto(PriceCatalogModerationCategory m) {
         if (m == null) return null;
         PriceCatalogCategoriesModerationDTO dto = new PriceCatalogCategoriesModerationDTO();
-        dto.setFree(m.isFree());     // acepta Boolean; autoboxing
+        dto.setFree(m.isFree());
         dto.setNotes(m.getNotes());
         return dto;
     }
     default PriceCatalogModerationCategory toModel(PriceCatalogCategoriesModerationDTO dto) {
         if (dto == null) return null;
         return PriceCatalogModerationCategory.builder()
-                .free(Boolean.TRUE.equals(dto.getFree()))  // << getFree(), NO isFree()
+                .free(Boolean.TRUE.equals(dto.getFree()))
                 .notes(dto.getNotes())
                 .build();
     }
 
-    // PriceCatalogCategories (raíz de categorías) con WRAPPERS para items
+    // PriceCatalogCategories (raíz de categorías)
     default PriceCatalogCategoriesDTO toDto(PriceCatalogCategories m) {
         if (m == null) return null;
         PriceCatalogCategoriesDTO dto = new PriceCatalogCategoriesDTO();
@@ -377,21 +555,21 @@ public interface BillingPricesApiMapper {
 
         // Fine tuning wrapper
         PriceCatalogCategoriesFineTuningDTO ftWrapper = new PriceCatalogCategoriesFineTuningDTO();
-        List<FineTuningItemDTO> ftItems = new ArrayList<>();
+        var ftItems = new ArrayList<FineTuningItemDTO>();
         if (m.getFineTuning() != null) for (FineTuningItem it : m.getFineTuning()) ftItems.add(toDto(it));
         ftWrapper.setItems(ftItems);
         dto.setFineTuning(ftWrapper);
 
         // Built-in tools wrapper
         PriceCatalogCategoriesBuiltInToolsDTO biWrapper = new PriceCatalogCategoriesBuiltInToolsDTO();
-        List<BuiltInToolItemDTO> biItems = new ArrayList<>();
+        var biItems = new ArrayList<BuiltInToolItemDTO>();
         if (m.getBuiltInTools() != null) for (BuiltInToolItem it : m.getBuiltInTools()) biItems.add(toDto(it));
         biWrapper.setItems(biItems);
         dto.setBuiltInTools(biWrapper);
 
         // Transcription/speech wrapper
         PriceCatalogCategoriesTranscriptionSpeechDTO tsWrapper = new PriceCatalogCategoriesTranscriptionSpeechDTO();
-        List<TranscriptionSpeechItemDTO> tsItems = new ArrayList<>();
+        var tsItems = new ArrayList<TranscriptionSpeechItemDTO>();
         if (m.getTranscriptionSpeech() != null) for (TranscriptionSpeechItem it : m.getTranscriptionSpeech()) tsItems.add(toDto(it));
         tsWrapper.setItems(tsItems);
         dto.setTranscriptionSpeech(tsWrapper);
@@ -408,19 +586,19 @@ public interface BillingPricesApiMapper {
         if (dto == null) return null;
 
         // Fine tuning
-        List<FineTuningItem> ft = new ArrayList<>();
+        var ft = new ArrayList<FineTuningItem>();
         if (dto.getFineTuning() != null && dto.getFineTuning().getItems() != null) {
             for (FineTuningItemDTO it : dto.getFineTuning().getItems()) ft.add(toModel(it));
         }
 
         // Built-in tools
-        List<BuiltInToolItem> bi = new ArrayList<>();
+        var bi = new ArrayList<BuiltInToolItem>();
         if (dto.getBuiltInTools() != null && dto.getBuiltInTools().getItems() != null) {
             for (BuiltInToolItemDTO it : dto.getBuiltInTools().getItems()) bi.add(toModel(it));
         }
 
         // Transcription/speech
-        List<TranscriptionSpeechItem> ts = new ArrayList<>();
+        var ts = new ArrayList<TranscriptionSpeechItem>();
         if (dto.getTranscriptionSpeech() != null && dto.getTranscriptionSpeech().getItems() != null) {
             for (TranscriptionSpeechItemDTO it : dto.getTranscriptionSpeech().getItems()) ts.add(toModel(it));
         }

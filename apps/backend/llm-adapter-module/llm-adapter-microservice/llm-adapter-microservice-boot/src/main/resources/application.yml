@@ -46,3 +46,7 @@ ai:
 #    model: ${AI_DEFAULTS_MODEL:gpt-5-mini}
 #    temperature: ${AI_DEFAULTS_TEMPERATURE:0.2}
 #    promptVersion: ${AI_DEFAULTS_PROMPT_VERSION:2025-08-19}
+
+fx:
+  baseUrl: ${FX_BASE_URL:https://api.frankfurter.app}
+  timeoutMs: ${FX_TIMEOUT_MS:10000}
