@@ -39,6 +39,8 @@ tags:
     description: Cálculo previo de scoring por plantilla.
   - name: Simulation
     description: Simulaciones de cambios (what-if) sin persistir.
+  - name: Onboarding
+    description: Cuestionario inicial, registro de respuestas y derivación de perfil.
 
 paths:
 
@@ -190,6 +192,146 @@ paths:
         '400': { $ref: '#/components/responses/400' }
         '422': { $ref: '#/components/responses/422' }
         '500': { $ref: '#/components/responses/500' }
+
+  ###########################################################################
+  # ONBOARDING (PREGUNTAS Y RESPUESTAS)
+  ###########################################################################
+
+  /onboarding/questions:
+    parameters:
+      - $ref: '#/components/parameters/Accept-Language-Header'
+      - $ref: '#/components/parameters/X-Request-Id-Header'
+    get:
+      tags: [Onboarding]
+      summary: Cuestionario dinámico de onboarding.
+      operationId: getOnboardingQuestions
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingQuestionsData' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      version: 'v1'
+                      questions:
+                        - id: AGE
+                          text: ¿Cuál es tu edad?
+                          type: number
+                          required: true
+                          constraints: { min: 16, max: 100 }
+                          section: perfil
+                        - id: RISK_SCORE
+                          text: ¿Cuál es tu tolerancia al riesgo (1–5)?
+                          type: number
+                          required: true
+                          constraints: { min: 1, max: 5 }
+                          section: perfil
+                        - id: INCOME_NET
+                          text: Ingresos netos mensuales (EUR)
+                          type: currency
+                          required: false
+                          constraints: { min: 0, max: 100000 }
+                          section: ingresos
+                        - id: GOALS
+                          text: ¿Cuáles son tus objetivos principales?
+                          type: multi_choice
+                          required: false
+                          options: [emergency, investment, debt_reduction, travel, housing]
+                          section: objetivos
+
+  /onboarding/answers:
+    post:
+      tags: [Onboarding]
+      summary: Registra respuestas y deriva el perfil (`ProfileSnapshot`).
+      operationId: submitOnboardingAnswers
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+      requestBody:
+        $ref: '#/components/requestBodies/OnboardingAnswersRequestBody'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingAnswersData' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      profile:
+                        age: 32
+                        stabilityIndex: 0.7
+                        liquidityNeed: 0.4
+                        riskScore: 3
+                        incomeNet: 2500
+                        expensesFixed: 1200
+                        expensesVariable: 600
+                        goals: [emergency, investment]
+                      preview:
+                        data:
+                          - templateId: EQUILIBRADO_50_30_20
+                            score: 0.82
+                            factors: { risk: 0.18, liquidity: 0.16, debt: 0.22, savingsGap: 0.12, age: 0.08, stability: 0.06 }
+                          - templateId: EMERGENCIA_RAPIDA
+                            score: 0.76
+                            factors: { risk: 0.12, liquidity: 0.20, debt: 0.24, savingsGap: 0.12, age: 0.04, stability: 0.04 }
+                      recommendedTemplateId: EQUILIBRADO_50_30_20
+        '400': { $ref: '#/components/responses/400' }
+        '422': { $ref: '#/components/responses/422' }
+        '500': { $ref: '#/components/responses/500' }
+
+  /onboarding/complete:
+    post:
+      tags: [Onboarding]
+      summary: Completa el onboarding y genera el plan (reglas + opcional GPT).
+      operationId: completeOnboardingAndGeneratePlan
+      parameters:
+        - $ref: '#/components/parameters/Accept-Language-Header'
+        - $ref: '#/components/parameters/X-Request-Id-Header'
+      requestBody:
+        $ref: '#/components/requestBodies/OnboardingCompleteRequestBody'
+      responses:
+        '201':
+          description: Plan generado/actualizado.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestIdHeader' }
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanData' }
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 6f88f74b-2878-4261-92d3-05fbb273cec0
+                      userId: 00000000-0000-0000-0000-000000000001
+                      planVersion: '2025-09-01T17:12:11Z'
+                      status: active
+                      templateId: EQUILIBRADO_50_30_20
+                      adjustments:
+                        saving_pct: 0.28
+                        emergency_months: 3
+                        envelopes: { fijos: 0.5, objetivos: 0.2, variables: 0.3 }
+                      rationale: 'Riesgo moderado; priorizamos liquidez y constancia.'
+                      alerts: ['Refuerza fondo de emergencia.']
+                      kpis:
+                        savingRate: 0.28
+                        runwayMonths: 0.0
+                        budgetCompliance: 1.0
+        '400': { $ref: '#/components/responses/400' }
+        '401': { $ref: '#/components/responses/401' }
+        '403': { $ref: '#/components/responses/403' }
+        '409': { $ref: '#/components/responses/409' }
+        '422': { $ref: '#/components/responses/422' }
+        '429': { $ref: '#/components/responses/429' }
+        '500': { $ref: '#/components/responses/500' }
+        '502': { $ref: '#/components/responses/502' }
+        '503': { $ref: '#/components/responses/503' }
+        '504': { $ref: '#/components/responses/504' }
 
   ###########################################################################
   # PLANS
@@ -540,7 +682,7 @@ components:
         href:
           type: string
           maxLength: 10000
-          pattern: ^[a-zA-Z0-9_\-\.:/\?&=%]*$
+          pattern: ^[a-zA-Z0-9_\\-\\.:/\\?&=%]*$
           minLength: 1
           example: http://localhost:8082/plan-engine-service/v0/templates?limit=10&offset=0
 
@@ -806,7 +948,7 @@ components:
           type: array
           items:
             type: string
-            maxLength: 300
+          maxItems: 50
         kpis:
           $ref: '#/components/schemas/PlanKPIs'
         aiMeta:
@@ -902,7 +1044,6 @@ components:
       properties:
         status: { $ref: '#/components/schemas/PlanStatus' }
         adjustments: { $ref: '#/components/schemas/PlanAdjustments' }
-      # evita {} vacíos:
       minProperties: 1
 
     AiMeta:
@@ -953,6 +1094,111 @@ components:
         promptVersion:
           type: string
           example: '2025-08-19'
+
+    # ---------- ONBOARDING SCHEMAS ----------
+
+    OnboardingQuestionType:
+      type: string
+      enum: [string, number, boolean, choice, multi_choice, currency, date]
+      example: number
+
+    OnboardingQuestion:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 2
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+          example: RISK_SCORE
+        text:
+          type: string
+          minLength: 3
+          maxLength: 300
+          example: ¿Cuál es tu tolerancia al riesgo (1–5)?
+        type: { $ref: '#/components/schemas/OnboardingQuestionType' }
+        required:
+          type: boolean
+          default: true
+        section:
+          type: string
+          enum: [perfil, ingresos, gastos, deudas, objetivos, otros]
+          example: perfil
+        constraints:
+          type: object
+          properties:
+            min: { type: number }
+            max: { type: number }
+            pattern:
+              type: string
+              maxLength: 200
+              example: '^[0-9]+(\\.[0-9]{1,2})?$'
+            maxLength: { type: integer, minimum: 1, maximum: 10000 }
+          additionalProperties: false
+        options:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+          description: Opciones disponibles para choice/multi_choice.
+      required: [id, text, type, required]
+
+    OnboardingQuestionsPayload:
+      type: object
+      properties:
+        version:
+          type: string
+          minLength: 1
+          maxLength: 32
+          example: v1
+        questions:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/OnboardingQuestion' }
+      required: [version, questions]
+
+    OnboardingQuestionsData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/OnboardingQuestionsPayload' }
+      required: [data]
+
+    OnboardingAnswer:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 2
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+          example: RISK_SCORE
+        value:
+          oneOf:
+            - type: number
+            - type: string
+            - type: boolean
+            - type: array
+              items:
+                type: string
+      required: [id, value]
+
+    OnboardingAnswersResult:
+      type: object
+      properties:
+        profile: { $ref: '#/components/schemas/ProfileSnapshot' }
+        preview: { $ref: '#/components/schemas/ScorePreviewData' }
+        recommendedTemplateId:
+          type: string
+          pattern: '^[A-Z0-9_]+$'
+          example: EQUILIBRADO_50_30_20
+      required: [profile]
+
+    OnboardingAnswersData:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/OnboardingAnswersResult' }
+      required: [data]
 
   ###########################################################################
   # REQUEST BODIES
@@ -1167,6 +1413,82 @@ components:
               value:
                 saving_pct: 0.30
                 envelopes: { variables: 0.24 }
+
+    # ---------- ONBOARDING REQUEST BODIES ----------
+
+    OnboardingAnswersRequestBody:
+      description: Respuestas del usuario para derivar `ProfileSnapshot` y preview opcional.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              userId:
+                type: string
+                format: uuid
+              answers:
+                type: array
+                minItems: 1
+                items: { $ref: '#/components/schemas/OnboardingAnswer' }
+              previewScores:
+                type: boolean
+                default: true
+              recommendTemplate:
+                type: boolean
+                default: true
+            required: [userId, answers]
+          examples:
+            sample:
+              value:
+                userId: 00000000-0000-0000-0000-000000000001
+                answers:
+                  - { id: AGE, value: 32 }
+                  - { id: RISK_SCORE, value: 3 }
+                  - { id: INCOME_NET, value: 2500 }
+                  - { id: GOALS, value: [emergency, investment] }
+                previewScores: true
+                recommendTemplate: true
+
+    OnboardingCompleteRequestBody:
+      description: Completa el onboarding, genera y persiste el plan (atajo a `/plans/generate`).
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              userId:
+                type: string
+                format: uuid
+              answers:
+                type: array
+                minItems: 1
+                items: { $ref: '#/components/schemas/OnboardingAnswer' }
+              mode:
+                type: string
+                enum: [rules, rules_plus_gpt]
+                default: rules_plus_gpt
+              forceTemplateId:
+                type: string
+                pattern: '^[A-Z0-9_]+$'
+              explain:
+                type: boolean
+                default: true
+              aiOptions:
+                $ref: '#/components/schemas/AiOptions'
+            required: [userId, answers]
+          examples:
+            minimal:
+              value:
+                userId: 00000000-0000-0000-0000-000000000001
+                answers:
+                  - { id: AGE, value: 32 }
+                  - { id: RISK_SCORE, value: 3 }
+                  - { id: INCOME_NET, value: 2500 }
+                  - { id: GOALS, value: [emergency, investment] }
+                mode: rules_plus_gpt
+                explain: true
 
   ###########################################################################
   # RESPONSES
